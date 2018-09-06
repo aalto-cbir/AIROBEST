@@ -18,6 +18,8 @@ import argparse
 import sklearn
 from sklearn import decomposition, preprocessing, utils
 from PIL import Image
+
+sys.path.append('../../tools')
 from hypdatatools_img import get_geotrans
 
 print(' '.join(sys.argv))
