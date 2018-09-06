@@ -28,11 +28,11 @@ print(' '.join(sys.argv))
 
 dirlist = [ '/proj/deepsat/hyperspectral',
             '~/airobest/hyperspectral',
-            './' ]
+            '.' ]
 
-for hdir in dirlist:
-    exp = os.path.expanduser(hdir)
-    if os.path.isdir(exp):
+for d in dirlist:
+    hdir = os.path.expanduser(d)
+    if os.path.isdir(hdir):
         break
 
 variable = 'fertilityclass'
@@ -139,15 +139,16 @@ hyphdr  = hdir+'/subset_A_20170615_reflectance.hdr'
 hypdata = spectral.open_image(hyphdr)
 hypmap  = hypdata.open_memmap()
 hypgt   = get_geotrans(hyphdr)
-print('Spectral: {:d} x {:d} pixels, {:d} bands.'.\
-      format(hypdata.shape[1], hypdata.shape[0], hypdata.shape[2]))
+print('Spectral: {:d} x {:d} pixels, {:d} bands in {:s}'.\
+      format(hypdata.shape[1], hypdata.shape[0], hypdata.shape[2], hyphdr))
 
 forhdr  = hdir+'/forestdata.hdr'
 fordata = spectral.open_image(forhdr)
 formap  = fordata.open_memmap()
 forgt   = get_geotrans(forhdr)
-print('Forest:   {:d} x {:d} pixels, {:d} bands.'.\
-      format(fordata.shape[1], fordata.shape[0], fordata.shape[2]), flush=True)
+print('Forest:   {:d} x {:d} pixels, {:d} bands in {:s}'.\
+      format(fordata.shape[1], fordata.shape[0], fordata.shape[2],forhdr), 
+      flush=True)
 
 titta_params = []
 titta_world = []
@@ -175,8 +176,9 @@ with open(tittaname[0], encoding=tittaname[1]) as tf:
                 v.append(vf)
             titta_val.append(v)
         ln += 1
-print('Titta:   {:d} points, {:d} variables.'.\
-      format(len(titta_val), len(titta_val[0])), flush=True)
+print('Titta:   {:d} points, {:d} variables in {:s}'.\
+      format(len(titta_val), len(titta_val[0]), tittaname[0]), 
+      flush=True)
 
 if False:
     hxy = (0, 0)
