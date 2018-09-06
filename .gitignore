@@ -3,6 +3,7 @@
 *.sublime-*
 *.pt
 *.npy
+*.log
 
 # Compiled
 __pycache__/
