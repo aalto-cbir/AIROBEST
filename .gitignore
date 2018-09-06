@@ -1,0 +1,10 @@
+# Repo specific
+.DS_Store
+*.sublime-*
+*.pt
+
+# Compiled
+__pycache__/
+
+# Jupyter Notebook
+.ipynb_checkpoints
