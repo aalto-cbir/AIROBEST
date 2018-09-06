@@ -26,7 +26,14 @@ print(' '.join(sys.argv))
 #print('matplotlib', matplotlib.__version__)
 #print('sklearn',    sklearn.__version__, flush=True)
 
-dir = '/proj/deepsat/hyperspectral'
+dirlist = [ '/proj/deepsat/hyperspectral',
+            '~/airobest/hyperspectral',
+            './' ]
+
+for hdir in dirlist:
+    exp = os.path.expanduser(hdir)
+    if os.path.isdir(exp):
+        break
 
 variable = 'fertilityclass'
 threshold = 0
@@ -127,7 +134,7 @@ def do_pca(data, n, txt, keep):
     for v in vvv:
         vv.append(v/np.linalg.norm(v))
     
-hyphdr  = dir+'/subset_A_20170615_reflectance.hdr'
+hyphdr  = hdir+'/subset_A_20170615_reflectance.hdr'
 #hyphdr  = '../20170615_reflectance_mosaic_128b.hdr'
 hypdata = spectral.open_image(hyphdr)
 hypmap  = hypdata.open_memmap()
@@ -135,7 +142,7 @@ hypgt   = get_geotrans(hyphdr)
 print('Spectral: {:d} x {:d} pixels, {:d} bands.'.\
       format(hypdata.shape[1], hypdata.shape[0], hypdata.shape[2]))
 
-forhdr  = dir+'/forestdata.hdr'
+forhdr  = hdir+'/forestdata.hdr'
 fordata = spectral.open_image(forhdr)
 formap  = fordata.open_memmap()
 forgt   = get_geotrans(forhdr)
@@ -146,8 +153,8 @@ titta_params = []
 titta_world = []
 titta_xy = []
 titta_val = []
-tittaname = (dir+'/Titta2013_coords.txt', 'utf-8')
-tittaname = (dir+'/Titta2013.txt',        'utf-16') 
+tittaname = (hdir+'/Titta2013_coords.txt', 'utf-8')
+tittaname = (hdir+'/Titta2013.txt',        'utf-16') 
 with open(tittaname[0], encoding=tittaname[1]) as tf:
     ln = 0
     for ll in tf:
