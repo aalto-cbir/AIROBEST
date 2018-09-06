@@ -2,6 +2,7 @@
 .DS_Store
 *.sublime-*
 *.pt
+*.npy
 
 # Compiled
 __pycache__/
