@@ -1,5 +1,6 @@
 # Repo specific
 .DS_Store
+.idea
 *.sublime-*
 *.pt
 *.npy
