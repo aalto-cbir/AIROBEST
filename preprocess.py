@@ -6,41 +6,11 @@
 import argparse
 import os
 
+import numpy as np
 import spectral
+from sklearn.model_selection import train_test_split
 
 from tools.hypdatatools_img import get_geotrans
-
-
-dirlist = ['/proj/deepsat/hyperspectral',
-           '~/airobest/hyperspectral',
-           '.']
-
-for d in dirlist:
-    hdir = os.path.expanduser(d)
-    if os.path.isdir(hdir):
-        break
-
-
-hyphdr = hdir + '/subset_A_20170615_reflectance.hdr'
-# hyphdr  = '../20170615_reflectance_mosaic_128b.hdr'
-hypdata = spectral.open_image(hyphdr)
-hypmap = hypdata.open_memmap()
-hypgt = get_geotrans(hyphdr)
-print('Spectral: {:d} x {:d} pixels, {:d} bands in {:s}'. \
-      format(hypdata.shape[1], hypdata.shape[0], hypdata.shape[2], hyphdr))
-
-forhdr = hdir + '/forestdata.hdr'
-fordata = spectral.open_image(forhdr)
-formap = fordata.open_memmap()
-forgt = get_geotrans(forhdr)
-print('Forest:   {:d} x {:d} pixels, {:d} bands in {:s}'. \
-      format(fordata.shape[1], fordata.shape[0], fordata.shape[2], forhdr),
-      flush=True)
-
-titta_params = []
-titta_world = []  # stores indexes and coordinates of Titta points with world coordinates
-titta_xy = []  # stores Titta points with image coordinates
-titta_val = []  # stores other values of Titta points
 
 
 # TODO: move to tools
@@ -64,7 +34,7 @@ def world2envi_p(xy, GT):
 def hyp2for(xy0, hgt, fgt):
     xy1 = envi2world_p(xy0, hgt)
     xy2 = world2envi_p(xy1, fgt)
-    return (int(np.floor(xy2[0] + 0.1)), int(np.floor(xy2[1] + 0.1)))
+    return int(np.floor(xy2[0] + 0.1)), int(np.floor(xy2[1] + 0.1))
 
 
 def parse_args():
@@ -76,6 +46,10 @@ def parse_args():
                         required=False, type=str,
                         default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
                         help='Path to hyperspectral data')
+    parser.add_argument('-forest_data_path',
+                        required=False, type=str,
+                        default='/proj/deepsat/hyperspectral/forestdata.hdr',
+                        help='Path to forest data')
     parser.add_argument('-human_data_path',
                         required=False, type=str,
                         default='/proj/deepsat/hyperspectral/Titta2013.txt',
@@ -94,11 +68,13 @@ def get_image_patch(hyp_image, x, y, size):
     :param size: image size
     :return: image patch
     """
+    # x = int(x.round())
+    # y = int(y.round())
     x_left = x - size // 2
     x_right = x_left + size
     y_left = y - size // 2
     y_right = y_left + size
-    image = hyp_image[x_left:x_right, y_left:y_right,:]
+    image = hyp_image[x_left:x_right, y_left:y_right, :]
     return image
 
 
@@ -111,9 +87,15 @@ def augment_points(hyp_image, x, y, size):
     :param size: size of image patch to return
     :return: a list of 9 points
     """
+
+    x = int(round(x)) if type(x) is not 'int' else x
+    y = int(round(y)) if type(y) is not 'int' else y
+
     patches = []
     operator = [-1, 0, 1]
     centers = []
+
+    # TODO: replace with random crops
     for i in operator:
         for j in operator:
             centers.append((x + size*i, y + size*j))
@@ -123,20 +105,64 @@ def augment_points(hyp_image, x, y, size):
     return patches
 
 
+def split_data(rows, cols):
+    coords = []
+    for i in range(rows):
+        for j in range(cols):
+            coords.append((i, j))
+
+    train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
+    train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
+    np.savetxt('train.txt', train, fmt="%d")
+    np.savetxt('test.txt', test, fmt="%d")
+    np.savetxt('val.txt', val, fmt="%d")
+
+
 def main():
-    """Do sth"""
+    dirlist = ['/proj/deepsat/hyperspectral',
+               '~/airobest/hyperspectral',
+               '.']
+
+    for d in dirlist:
+        hdir = os.path.expanduser(d)
+        if os.path.isdir(hdir):
+            break
+
+    hyphdr = hdir + '/subset_A_20170615_reflectance.hdr'
+    # hyphdr  = '../20170615_reflectance_mosaic_128b.hdr'
+    hypdata = spectral.open_image(hyphdr)
+    hypmap = hypdata.open_memmap()
+    hypgt = get_geotrans(hyphdr)
+    print('Spectral: {:d} x {:d} pixels, {:d} bands in {:s}'. \
+          format(hypdata.shape[1], hypdata.shape[0], hypdata.shape[2], hyphdr))
+
+    split_data(hypmap.shape[0], hypmap.shape[1])
+
+    forhdr = hdir + '/forestdata.hdr'
+    fordata = spectral.open_image(forhdr)
+    formap = fordata.open_memmap()
+    forgt = get_geotrans(forhdr)
+    print('Forest:   {:d} x {:d} pixels, {:d} bands in {:s}'. \
+          format(fordata.shape[1], fordata.shape[0], fordata.shape[2], forhdr),
+          flush=True)
+
+    titta_params = []
+    titta_world = []  # stores indexes and coordinates of Titta points with world coordinates
+    titta_xy = []  # stores Titta points with image coordinates
+    titta_val = []  # stores other values of Titta points
+
+    #######
     options = parse_args()
     print(options)
     hyp_data = spectral.open_image(options.hyperspectral_path)
     hyp_map = hyp_data.open_memmap()
     geo_transform = get_geotrans(options.hyperspectral_path)
 
-    titta_world = []  # list of world coordinates
     with open(options.human_data_path, encoding='utf-16') as tf:
         ln = 0
         for ll in tf:
             lx = ll.rstrip().split('\t')
-            # print(lx)
+
             if ln == 0:
                 titta_params = lx[3:]
             else:
@@ -151,6 +177,9 @@ def main():
                         vf = float(lx[i])
                     v.append(vf)
                 titta_val.append(v)
+
+                patches = augment_points(hyp_data, xy[0], xy[1], 10)
+                print(patches.shape)
             ln += 1
 
 if __name__ == "__main__":
