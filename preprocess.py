@@ -6,9 +6,11 @@
 import argparse
 import os
 
+import pandas as pd
 import numpy as np
 import spectral
 from sklearn.model_selection import train_test_split
+import torch
 
 from tools.hypdatatools_img import get_geotrans
 
@@ -32,6 +34,13 @@ def world2envi_p(xy, GT):
 
 
 def hyp2for(xy0, hgt, fgt):
+    """
+    Convert coordinates of a point in hyperspectral image system to forest map system
+    :param xy0: coordinate of the point to convert, in order (col, row)
+    :param hgt: hyperspectral geo transform
+    :param fgt: forest geo transform
+    :return: coordinate in forest map, in order (col, row)
+    """
     xy1 = envi2world_p(xy0, hgt)
     xy2 = world2envi_p(xy1, fgt)
     return int(np.floor(xy2[0] + 0.1)), int(np.floor(xy2[1] + 0.1))
@@ -42,7 +51,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='preprocess.py',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-hyperspectral_path',
+    parser.add_argument('-hyper_data_path',
                         required=False, type=str,
                         default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
                         help='Path to hyperspectral data')
@@ -118,6 +127,92 @@ def split_data(rows, cols):
     np.savetxt('val.txt', val, fmt="%d")
 
 
+def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
+    """
+    Create hyperspectral labels from forest data
+    :param hyper_image: W1xH1xC
+    :param forest_labels: W2xH2xB
+    :return:
+    """
+    num_bands = forest_labels.shape[2]
+    rows, cols = hyper_image.shape
+    hyper_labels = torch.zeros(rows, cols, num_bands)
+
+    for row in range(rows):
+        for col in range(cols):
+            # get coordinate of (row, col) in forest map
+            c, r = hyp2for((col, row), hyper_gt, forest_gt)
+            assert cols >= c >= 0 and rows >= r >= 0, \
+                "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
+            hyper_labels[row, col] = forest_labels[r, c]
+
+    return hyper_labels
+
+
+def in_hypmap(W, H, x, y):
+    """
+    Check if a point with coordinate (x, y) lines within the image with size (W, H)
+    in Cartesian coordinate system
+    :param W: width of the image (columns)
+    :param H: height of the image (rows)
+    :param x:
+    :param y:
+    :return: True if it's inside
+    """
+    return W >= x >= 0 and H >= y >= 0
+
+
+def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
+    """
+    Improve hyperspectral data labels by applying data labels collected at certain points
+    by human
+    :param human_data_path:
+    :param hyper_labels:
+    :return:
+    """
+
+    # dictionary contains mapping from column of Titta data (key)
+    # to equivalent column (or 'band' to be more precise) in Forest data (value)
+    # ex: items with key-value pair: (3, 9) means column 3 (index starts from
+    # 'Fertilityclass' column) of Titta has the same data as column 9 of Forest data
+    column_mappings = {
+        0: 0,
+        3: 9,
+        4: 10,
+        5: 6,
+        6: 4,
+        8: 7,
+        11: 8,
+        12: 16
+    }
+    df = pd.read_csv(human_data_path,
+                     encoding='utf-16',
+                     na_values='#DIV/0!',
+                     skiprows=[187, 226],  # skip 2 rows with #DIV/0! values
+                     delim_whitespace=True)
+
+    data = df.as_matrix()
+    coords = data[1:3]
+    labels = data[3:]
+
+    titta_columns = df.columns.values[3:]
+    print('Column mappings from Titta to Forest data')
+    for titta_idx, forest_idx in column_mappings.items():
+        print('%s --> %s ' % (titta_columns[titta_idx], forest_columns[forest_idx]))
+
+    for idx, x, y in enumerate(coords):
+        c, r = world2envi_p((x, y), hyper_gt)
+
+        if not in_hypmap(hyper_labels.shape[1], hyper_labels.shape[0], c, r):
+            continue
+
+        label = labels[idx]
+        for titta_idx, forest_idx in column_mappings.items():
+            hyper_labels[r, c, forest_idx] = label[titta_idx]
+
+    return hyper_labels
+
+
 def main():
     dirlist = ['/proj/deepsat/hyperspectral',
                '~/airobest/hyperspectral',
@@ -127,16 +222,6 @@ def main():
         hdir = os.path.expanduser(d)
         if os.path.isdir(hdir):
             break
-
-    hyphdr = hdir + '/subset_A_20170615_reflectance.hdr'
-    # hyphdr  = '../20170615_reflectance_mosaic_128b.hdr'
-    hypdata = spectral.open_image(hyphdr)
-    hypmap = hypdata.open_memmap()
-    hypgt = get_geotrans(hyphdr)
-    print('Spectral: {:d} x {:d} pixels, {:d} bands in {:s}'. \
-          format(hypdata.shape[1], hypdata.shape[0], hypdata.shape[2], hyphdr))
-
-    split_data(hypmap.shape[0], hypmap.shape[1])
 
     forhdr = hdir + '/forestdata.hdr'
     fordata = spectral.open_image(forhdr)
@@ -154,9 +239,19 @@ def main():
     #######
     options = parse_args()
     print(options)
-    hyp_data = spectral.open_image(options.hyperspectral_path)
-    hyp_map = hyp_data.open_memmap()
-    geo_transform = get_geotrans(options.hyperspectral_path)
+    hyper_data = spectral.open_image(options.hyper_data_path)
+    hyper_image = hyper_data.open_memmap()
+    hyper_gt = get_geotrans(options.hyper_data_path)
+
+    forest_data = spectral.open_image(options.forest_data_path)
+    forest_labels = forest_data.open_memmap()
+    forest_gt = get_geotrans(options.forest_data_path)
+    forest_columns = forest_data.metadata['band names']
+
+    split_data(hyper_image.shape[0], hyper_image.shape[1])
+
+    hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
+
 
     with open(options.human_data_path, encoding='utf-16') as tf:
         ln = 0
@@ -168,7 +263,7 @@ def main():
             else:
                 idxy = [int(lx[0]), int(lx[1]), int(lx[2])]
                 titta_world.append(idxy)
-                xy = world2envi_p(idxy[1:3], hypgt)
+                xy = world2envi_p(idxy[1:3], hyper_gt)
                 titta_xy.append(xy)
                 v = []
                 for i in range(3, len(lx)):
@@ -178,7 +273,7 @@ def main():
                     v.append(vf)
                 titta_val.append(v)
 
-                patches = augment_points(hyp_data, xy[0], xy[1], 10)
+                patches = augment_points(hyper_data, xy[0], xy[1], 10)
                 print(patches.shape)
             ln += 1
 
