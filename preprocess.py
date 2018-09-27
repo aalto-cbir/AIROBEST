@@ -201,7 +201,7 @@ def main():
     forest_gt = get_geotrans(options.forest_data_path)
     forest_columns = forest_data.metadata['band names']
 
-    # split_data(hyper_image.shape[0], hyper_image.shape[1])
+    split_data(hyper_image.shape[0], hyper_image.shape[1])
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
     hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
