@@ -63,55 +63,17 @@ def parse_args():
                         required=False, type=str,
                         default='/proj/deepsat/hyperspectral/Titta2013.txt',
                         help='Path to human verified data (Titta points)')
+    parser.add_argument('-src_file_name',
+                        required=False, type=str,
+                        default='hyperspectral_src',
+                        help='Save hyperspectral image with this name')
+    parser.add_argument('-tgt_file_name',
+                        required=False, type=str,
+                        default='hyperspectral_tgt',
+                        help='Save hyperspectral labels with this name')
     opt = parser.parse_args()
 
     return opt
-
-
-def get_image_patch(hyp_image, x, y, size):
-    """
-    Get an image patch from the center point (x,y) with dimension size x size
-    :param hyp_image: hyperspectral image
-    :param x: x-coordinate
-    :param y: y-coordinate
-    :param size: image size
-    :return: image patch
-    """
-    # x = int(x.round())
-    # y = int(y.round())
-    x_left = x - size // 2
-    x_right = x_left + size
-    y_left = y - size // 2
-    y_right = y_left + size
-    image = hyp_image[x_left:x_right, y_left:y_right, :]
-    return image
-
-
-def augment_points(hyp_image, x, y, size):
-    """
-    Augment the input data. Notice the size should be within 70cm from the center (x,y)
-    :param hyp_image: hyperspectral image
-    :param x: x-coordinate of a Titta point in image coordinate
-    :param y: y-coordinate of a Titta point in image coordinate
-    :param size: size of image patch to return
-    :return: a list of 9 points
-    """
-
-    x = int(round(x)) if type(x) is not 'int' else x
-    y = int(round(y)) if type(y) is not 'int' else y
-
-    patches = []
-    operator = [-1, 0, 1]
-    centers = []
-
-    # TODO: replace with random crops
-    for i in operator:
-        for j in operator:
-            centers.append((x + size*i, y + size*j))
-
-    for x, y in centers:
-        patches.append(get_image_patch(hyp_image, x, y, size))
-    return patches
 
 
 def split_data(rows, cols):
@@ -168,6 +130,8 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
     by human
     :param human_data_path:
     :param hyper_labels:
+    :param hyper_gt:
+    :param forest_columns:
     :return:
     """
 
@@ -214,27 +178,6 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
 
 
 def main():
-    dirlist = ['/proj/deepsat/hyperspectral',
-               '~/airobest/hyperspectral',
-               '.']
-
-    for d in dirlist:
-        hdir = os.path.expanduser(d)
-        if os.path.isdir(hdir):
-            break
-
-    forhdr = hdir + '/forestdata.hdr'
-    fordata = spectral.open_image(forhdr)
-    formap = fordata.open_memmap()
-    forgt = get_geotrans(forhdr)
-    print('Forest:   {:d} x {:d} pixels, {:d} bands in {:s}'. \
-          format(fordata.shape[1], fordata.shape[0], fordata.shape[2], forhdr),
-          flush=True)
-
-    titta_params = []
-    titta_world = []  # stores indexes and coordinates of Titta points with world coordinates
-    titta_xy = []  # stores Titta points with image coordinates
-    titta_val = []  # stores other values of Titta points
 
     #######
     options = parse_args()
@@ -251,31 +194,17 @@ def main():
     split_data(hyper_image.shape[0], hyper_image.shape[1])
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
+    hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
 
+    if not os.path.isdir('./data'):
+        os.makedirs('./data')
 
-    with open(options.human_data_path, encoding='utf-16') as tf:
-        ln = 0
-        for ll in tf:
-            lx = ll.rstrip().split('\t')
+    src_name = './data/%s.pt' % options['src_file_name']
+    tgt_name = './data/%s.pt' % options['tgt_file_name']
 
-            if ln == 0:
-                titta_params = lx[3:]
-            else:
-                idxy = [int(lx[0]), int(lx[1]), int(lx[2])]
-                titta_world.append(idxy)
-                xy = world2envi_p(idxy[1:3], hyper_gt)
-                titta_xy.append(xy)
-                v = []
-                for i in range(3, len(lx)):
-                    vf = 0.0
-                    if lx[i] != '#DIV/0!':
-                        vf = float(lx[i])
-                    v.append(vf)
-                titta_val.append(v)
+    torch.save(hyper_image, src_name)
+    torch.save(hyper_labels, tgt_name)
 
-                patches = augment_points(hyper_data, xy[0], xy[1], 10)
-                print(patches.shape)
-            ln += 1
 
 if __name__ == "__main__":
     main()
