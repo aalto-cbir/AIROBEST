@@ -96,17 +96,17 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
     :param forest_labels: W2xH2xB
     :return:
     """
-    num_bands = forest_labels.shape[2]
-    rows, cols = hyper_image.shape
+    forest_rows, forest_cols, num_bands = forest_labels.shape
+    rows, cols, _ = hyper_image.shape
     hyper_labels = torch.zeros(rows, cols, num_bands)
 
     for row in range(rows):
         for col in range(cols):
             # get coordinate of (row, col) in forest map
             c, r = hyp2for((col, row), hyper_gt, forest_gt)
-            assert cols >= c >= 0 and rows >= r >= 0, \
-                "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
-            hyper_labels[row, col] = forest_labels[r, c]
+            # assert forest_cols >= c >= 0 and forest_rows >= r >= 0, \
+            #     "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
+            hyper_labels[row, col] = torch.from_numpy(forest_labels[r, c])
 
     return hyper_labels
 
@@ -149,6 +149,7 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
         11: 8,
         12: 16
     }
+
     df = pd.read_csv(human_data_path,
                      encoding='utf-16',
                      na_values='#DIV/0!',
@@ -156,15 +157,22 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
                      delim_whitespace=True)
 
     data = df.as_matrix()
-    coords = data[1:3]
-    labels = data[3:]
+    coords = data[:, 1:3]
+    labels = data[:, 3:]
+
+    # scale data in columns 6 and 12 of Titta data to match
+    # the value in Forest data. The value of these columns are
+    # scaled up 100 times
+    scaling_idx = [6, 12]
+    labels[:, scaling_idx] = labels[:, scaling_idx] * 100
+    ######
 
     titta_columns = df.columns.values[3:]
     print('Column mappings from Titta to Forest data')
     for titta_idx, forest_idx in column_mappings.items():
         print('%s --> %s ' % (titta_columns[titta_idx], forest_columns[forest_idx]))
 
-    for idx, x, y in enumerate(coords):
+    for idx, (x, y) in enumerate(coords):
         c, r = world2envi_p((x, y), hyper_gt)
 
         if not in_hypmap(hyper_labels.shape[1], hyper_labels.shape[0], c, r):
@@ -184,6 +192,8 @@ def main():
     print(options)
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_image = hyper_data.open_memmap()
+    # TODO: remove
+    # hyper_image = hyper_image[:10, :15, :]
     hyper_gt = get_geotrans(options.hyper_data_path)
 
     forest_data = spectral.open_image(options.forest_data_path)
@@ -191,7 +201,7 @@ def main():
     forest_gt = get_geotrans(options.forest_data_path)
     forest_columns = forest_data.metadata['band names']
 
-    split_data(hyper_image.shape[0], hyper_image.shape[1])
+    # split_data(hyper_image.shape[0], hyper_image.shape[1])
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
     hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
