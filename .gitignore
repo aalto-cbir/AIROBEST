@@ -5,6 +5,7 @@
 *.pt
 *.npy
 *.log
+*.out
 
 # Compiled
 __pycache__/

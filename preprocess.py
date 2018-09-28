@@ -30,6 +30,8 @@ def world2envi_p(xy, GT):
     D = GT[1] * GT[5] - GT[2] * GT[4]
     xy = ((X * GT[5] - GT[0] * GT[5] + GT[2] * GT[3] - Y * GT[2]) / D - 0.5,
           (Y * GT[1] - GT[1] * GT[3] + GT[0] * GT[4] - X * GT[4]) / D - 0.5)
+    # convert coordinates to integers
+    xy = (int(np.round(xy[0])), int(np.round(xy[1])))
     return xy
 
 
@@ -106,7 +108,7 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
             c, r = hyp2for((col, row), hyper_gt, forest_gt)
             # assert forest_cols >= c >= 0 and forest_rows >= r >= 0, \
             #     "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
-            hyper_labels[row, col] = torch.from_numpy(forest_labels[r, c])
+            hyper_labels[row, col] = forest_labels[r, c]
 
     return hyper_labels
 
@@ -183,7 +185,7 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
         for titta_idx, forest_idx in column_mappings.items():
             hyper_labels[r, c, forest_idx] = label[titta_idx]
 
-    print('There are %d Titta points hit the hyperspectral map.' % counter)
+    print('There are %d Titta points line inside the hyperspectral map.' % counter)
     return hyper_labels
 
 
@@ -193,13 +195,13 @@ def main():
     options = parse_args()
     print(options)
     hyper_data = spectral.open_image(options.hyper_data_path)
-    hyper_image = hyper_data.open_memmap()
+    hyper_image = torch.from_numpy(hyper_data.open_memmap())
     # TODO: remove
-    # hyper_image = hyper_image[:10, :15, :]
+    # hyper_image = hyper_image[:100, :150, :]
     hyper_gt = get_geotrans(options.hyper_data_path)
 
     forest_data = spectral.open_image(options.forest_data_path)
-    forest_labels = forest_data.open_memmap()
+    forest_labels = torch.from_numpy(forest_data.open_memmap())
     forest_gt = get_geotrans(options.forest_data_path)
     forest_columns = forest_data.metadata['band names']
 
@@ -217,7 +219,8 @@ def main():
     torch.save(hyper_image, src_name)
     torch.save(hyper_labels, tgt_name)
 
-    print('Processed files are stored under ./data directory')
+    print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
+    print('Processed files are stored under "./data" directory')
     print('End processing data...')
 
 
