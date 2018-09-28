@@ -172,21 +172,23 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
     for titta_idx, forest_idx in column_mappings.items():
         print('%s --> %s ' % (titta_columns[titta_idx], forest_columns[forest_idx]))
 
+    counter = 0
     for idx, (x, y) in enumerate(coords):
         c, r = world2envi_p((x, y), hyper_gt)
 
         if not in_hypmap(hyper_labels.shape[1], hyper_labels.shape[0], c, r):
             continue
-
+        counter += 1
         label = labels[idx]
         for titta_idx, forest_idx in column_mappings.items():
             hyper_labels[r, c, forest_idx] = label[titta_idx]
 
+    print('There are %d Titta points hit the hyperspectral map.' % counter)
     return hyper_labels
 
 
 def main():
-
+    print('Start processing data...')
     #######
     options = parse_args()
     print(options)
@@ -201,7 +203,7 @@ def main():
     forest_gt = get_geotrans(options.forest_data_path)
     forest_columns = forest_data.metadata['band names']
 
-    split_data(hyper_image.shape[0], hyper_image.shape[1])
+    # split_data(hyper_image.shape[0], hyper_image.shape[1])
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
     hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
@@ -209,11 +211,14 @@ def main():
     if not os.path.isdir('./data'):
         os.makedirs('./data')
 
-    src_name = './data/%s.pt' % options['src_file_name']
-    tgt_name = './data/%s.pt' % options['tgt_file_name']
+    src_name = './data/%s.pt' % options.src_file_name
+    tgt_name = './data/%s.pt' % options.tgt_file_name
 
     torch.save(hyper_image, src_name)
     torch.save(hyper_labels, tgt_name)
+
+    print('Processed files are stored under ./data directory')
+    print('End processing data...')
 
 
 if __name__ == "__main__":
