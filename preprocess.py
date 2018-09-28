@@ -55,7 +55,7 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-hyper_data_path',
                         required=False, type=str,
-                        default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
+                        default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data')
     parser.add_argument('-forest_data_path',
                         required=False, type=str,
