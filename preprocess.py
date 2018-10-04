@@ -16,6 +16,8 @@ import torch
 from tools.hypdatatools_img import get_geotrans
 
 sys.stdout.flush()
+
+
 # TODO: move to tools
 def envi2world_p(xy, GT):
     P = xy[0] + 0.5  # relative to pixel corner
@@ -105,7 +107,7 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
     # all the pixels, only the first pixel is needed
     forest_rows, forest_cols, num_bands = forest_labels.shape
     rows, cols, _ = hyper_image.shape
-    hyper_labels = torch.zeros(rows, cols, num_bands)
+    hyper_labels = np.zeros((rows, cols, num_bands))
 
     for row in range(rows):
         for col in range(cols):
@@ -212,6 +214,7 @@ def process_labels(labels):
     # TODO: get 'categorical_classes' from parameter
     # Current categorical classes: fertilityclass (0), soiltype (1), developmentclass (2), maintreespecies (9)
     categorical_classes = [0, 1, 2, 9]  # contains the indices of the categorical classes in forest data
+    useless_bands = [3]
     transformed_data = None
     num_classes = 0
     R, C, _ = labels.shape
@@ -227,20 +230,26 @@ def process_labels(labels):
                 idx = index_dict[band[row, col]]  # get the index of the value  band[row, col] in one-hot vector
                 one_hot[row, col, idx] = 1
 
-        if transformed_data is not None:
+        if transformed_data is None:
             transformed_data = one_hot
         else:
             transformed_data = np.concatenate((transformed_data, one_hot), axis=2)
         num_classes += len(unique_values)
 
     # delete all the categorical classes from label data
-    labels = np.delete(labels, categorical_classes, axis=2)
+    labels = np.delete(labels, np.append(categorical_classes, useless_bands), axis=2)
 
     # normalize data for regression task
     for i in range(labels.shape[2]):
         max = np.max(labels[:, :, i])
         min = np.min(labels[:, :, i])
-        labels[:, :, i] = (labels[:, :, i] - min) / (max -min)
+        if max != min:
+            labels[:, :, i] = (labels[:, :, i] - min) / (max - min)
+        elif max != 0:  # if all items have the same non-zero value
+            labels[:, :, i].fill(0.5)
+        else:  # if all are 0, if this happens, consider remove the whole band from data
+            labels[:, :, i].fill(0.0)
+            print('Band with index %d has all zero values, consider removing it!' % i)
 
     # concatenate with newly transformed data
     labels = np.concatenate((transformed_data, labels), axis=2)
@@ -255,15 +264,16 @@ def main():
     print(options)
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_gt = get_geotrans(options.hyper_data_path)
-    hyper_image = torch.from_numpy(hyper_data.open_memmap())
+    # hyper_image = torch.from_numpy(hyper_data.open_memmap())
+    hyper_image = hyper_data.open_memmap()
     # TODO: remove
     hyper_image = hyper_image[:100, :150, :]
 
     forest_data = spectral.open_image(options.forest_data_path)
     forest_gt = get_geotrans(options.forest_data_path)
     forest_columns = forest_data.metadata['band names']
-    forest_labels = torch.from_numpy(forest_data.open_memmap())  # shape: 11996x12517x17
-    # forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
+    # forest_labels = torch.from_numpy(forest_data.open_memmap())  # shape: 11996x12517x17
+    forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
 
     # split_data(hyper_image.shape[0], hyper_image.shape[1])
 
@@ -277,8 +287,8 @@ def main():
     src_name = './data/%s.pt' % options.src_file_name
     tgt_name = './data/%s.pt' % options.tgt_file_name
 
-    torch.save(hyper_image, src_name)
-    torch.save(hyper_labels, tgt_name)
+    torch.save(torch.from_numpy(hyper_image), src_name)
+    torch.save(torch.from_numpy(hyper_labels), tgt_name)
 
     print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
     print('Processed files are stored under "./data" directory')
