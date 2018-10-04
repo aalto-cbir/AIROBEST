@@ -258,6 +258,7 @@ def process_labels(labels):
     labels = np.concatenate((transformed_data, labels), axis=2)
 
     metadata['categorical'] = categorical
+    metadata['num_classes'] = num_classes
     return labels, metadata
 
 
