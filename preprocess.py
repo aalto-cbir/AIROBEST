@@ -217,6 +217,8 @@ def process_labels(labels):
     useless_bands = [3]
     transformed_data = None
     num_classes = 0
+    metadata = {}
+    categorical = {}
     R, C, _ = labels.shape
 
     for i in categorical_classes:
@@ -224,6 +226,7 @@ def process_labels(labels):
         unique_values = np.unique(band)
         print('Band {}: {}'.format(i, unique_values))
         index_dict = dict([(val, idx) for (idx, val) in enumerate(unique_values)])
+        categorical[i] = unique_values
         one_hot = np.zeros((R, C, len(unique_values)), dtype=int)
         for row in range(R):
             for col in range(C):
@@ -254,7 +257,8 @@ def process_labels(labels):
     # concatenate with newly transformed data
     labels = np.concatenate((transformed_data, labels), axis=2)
 
-    return labels
+    metadata['categorical'] = categorical
+    return labels, metadata
 
 
 def main():
@@ -267,7 +271,7 @@ def main():
     # hyper_image = torch.from_numpy(hyper_data.open_memmap())
     hyper_image = hyper_data.open_memmap()
     # TODO: remove
-    hyper_image = hyper_image[:100, :150, :]
+    # hyper_image = hyper_image[:100, :150, :]
 
     forest_data = spectral.open_image(options.forest_data_path)
     forest_gt = get_geotrans(options.forest_data_path)
@@ -279,16 +283,19 @@ def main():
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
     hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
-    hyper_labels = process_labels(hyper_labels)
+    hyper_labels, metadata = process_labels(hyper_labels)
 
     if not os.path.isdir('./data'):
         os.makedirs('./data')
 
     src_name = './data/%s.pt' % options.src_file_name
     tgt_name = './data/%s.pt' % options.tgt_file_name
+    metadata_name = './data/metadata.pt'
 
+    torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_image), src_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
+
 
     print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
     print('Processed files are stored under "./data" directory')
