@@ -101,6 +101,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
     device = device
     epoch = options.epoch
     save_every = 1  # specify number of epochs to save model
+    train_step = 0
 
     net.to(device)
 
@@ -111,7 +112,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
 
         for idx, (src, tgt) in enumerate(train_loader):
             src = src.to(device, dtype=torch.float32)
-            tgt = tgt.to(device, dtype=torch.int64)
+            tgt = tgt.to(device, dtype=torch.float32)
 
             optimizer.zero_grad()
             predict = net(src)
@@ -121,7 +122,11 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
 
             optimizer.step()
 
-            losses.append(loss.item())
+            if train_step % 200 == 0:
+                print('Traing loss {}'.format(loss.item()))
+
+            np.append(losses, loss.item())
+            train_step += 1
 
         # TODO: validation
         if val_loader is not None:
@@ -156,7 +161,7 @@ def main():
     # maybe only copy to gpu during computation?
     hyper_image.to(device)
     # hyper_labels.to(device)
-    hyper_labels_cls.to(device, dtype=torch.int64)
+    hyper_labels_cls.to(device, dtype=torch.float32)
     hyper_labels_reg.to(device, dtype=torch.float32)
 
     R, C, B = hyper_image.shape
