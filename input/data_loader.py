@@ -25,8 +25,8 @@ class HypDataset(data.Dataset):
         self.hyper_image = hyper_image
         self.hyper_labels = hyper_labels
         self.patch_size = patch_size
-        self.hyper_row = self.hyper_image.shape(1)
-        self.hyper_col = self.hyper_image.shape(0)
+        self.hyper_row = self.hyper_image.shape[0]
+        self.hyper_col = self.hyper_image.shape[1]
         # assert os.path.exists(coords_path), 'File does not exist in path: %s' % coords_path
         # self.coords = np.load(coords_path)
         self.coords = coords

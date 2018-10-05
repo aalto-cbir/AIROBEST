@@ -27,7 +27,7 @@ def parse_args():
                         help='Path to training input file')
     parser.add_argument('-tgt_path',
                         required=False, type=str,
-                        default='./data/hyperspectral_tgt.gt',
+                        default='./data/hyperspectral_tgt.pt',
                         help='Path to training labels')
     parser.add_argument('-gpu',
                         type=int, default=-1,
@@ -81,6 +81,7 @@ def save_checkpoint(model, model_name, epoch):
 def validate(net, val_loader, device):
     # TODO: fix me
     pass
+
 
 def train(net, optimizer, loss_fn, train_loader, val_loader, options):
     """
@@ -142,9 +143,9 @@ def main():
     hyper_labels = torch.load(options.tgt_path)
 
     # Is it necessary?
-    device = get_device(options.gpu)
-    hyper_image.to(device)
-    hyper_labels.to(device)
+    # device = get_device(options.gpu)
+    # hyper_image.to(device)
+    # hyper_labels.to(device)
 
     R, C, B = hyper_image.shape
     train_set, test_set, val_set = split_data(R, C, options.patch_size)
