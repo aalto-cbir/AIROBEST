@@ -123,7 +123,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
             optimizer.step()
 
             if train_step % 200 == 0:
-                print('Traing loss {}'.format(loss.item()))
+                print('Training loss at step {}: {}'.format(train_step, loss.item()))
 
             np.append(losses, loss.item())
             train_step += 1
