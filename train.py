@@ -38,7 +38,7 @@ def parse_args():
                        default=10,
                        help="Number of training epochs, default is 10")
     train.add_argument('-patch_size', type=int,
-                       default=11,
+                       default=28,
                        help="Size of the spatial neighbourhood, default is 11")
     train.add_argument('-lr', type=float,
                        default=1e-3,
@@ -83,7 +83,7 @@ def validate(net, val_loader, device):
     pass
 
 
-def train(net, optimizer, loss_fn, train_loader, val_loader, options):
+def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
     """
     Training
 
@@ -96,7 +96,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, options):
     :param options:
     :return:
     """
-    device = get_device(options.gpu)
+    device = device
     epoch = options.epoch
     save_every = 1  # specify number of epochs to save model
 
@@ -126,28 +126,32 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, options):
             validate(net, val_loader, device)
 
         if e % save_every == 0:
-            save_checkpoint('Chen-model', e)
+            save_checkpoint(net, 'Chen-model', e)
 
 
 def main():
     print('Start training...')
     #######
     options = parse_args()
+    # TODO: check for minimum patch_size
     print('Training options: {}'.format(options))
 
     metadata = get_input_data('./data/metadata.pt')
     output_classes = metadata['num_classes']
     assert output_classes > 0, 'Number of classes has to be > 0'
 
-    hyper_image = torch.load(options.src_path)
-    hyper_labels = torch.load(options.tgt_path)
+    hyper_image = torch.load(options.src_path).float()
+    hyper_labels = torch.load(options.tgt_path).float()
 
     # Is it necessary?
-    # device = get_device(options.gpu)
-    # hyper_image.to(device)
-    # hyper_labels.to(device)
+    device = get_device(options.gpu)
+    hyper_image.to(device)
+    hyper_labels.to(device)
 
     R, C, B = hyper_image.shape
+    # TODO: Convert image representation, should be done in preprocessing stage
+    # hyper_image = hyper_image.permute(2, 0, 1)
+
     train_set, test_set, val_set = split_data(R, C, options.patch_size)
 
     # TODO: only need labels for classification task for now
@@ -173,7 +177,7 @@ def main():
     loss = nn.CrossEntropyLoss()
     # End model construction
 
-    train(model, optimizer, loss, train_loader, val_loader, options)
+    train(model, optimizer, loss, train_loader, val_loader, device, options)
     print('End training...')
 
 

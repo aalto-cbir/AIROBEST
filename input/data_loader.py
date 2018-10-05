@@ -48,6 +48,12 @@ class HypDataset(data.Dataset):
         src = self.hyper_image[row1:row2, col1:col2]
         tgt = self.hyper_labels[row, col]  # use labels of center pixel
 
+        # convert shape to pytorch image format: [channels x height x width]
+        src = src.permute(2, 0, 1)
+
+        # Transform to 4D tensor for 3D convolution
+        if self.patch_size > 1:
+            src = src.unsqueeze(0)
         return src, tgt
 
     def __len__(self):
