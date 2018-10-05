@@ -58,4 +58,5 @@ class ChenModel(nn.Module):
         x = self.dropout(x)
         x = x.view(-1, self.features_size)
         x = self.fc(x)
+        x = x.sigmoid(x)
         return x
