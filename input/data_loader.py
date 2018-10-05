@@ -45,7 +45,7 @@ class HypDataset(data.Dataset):
         assert row1 >= 0 and col1 >= 0 and row2 <= self.hyper_row and col2 <= self.hyper_col, \
             'Coordinate is invalid: %s %s ' % (row, col)
 
-        src = self.hyper_image[row1:row2, col1:col2]
+        src = self.hyper_image[row1:(row2+1), col1:(col2+1)]
         tgt = self.hyper_labels[row, col]  # use labels of center pixel
 
         # convert shape to pytorch image format: [channels x height x width]

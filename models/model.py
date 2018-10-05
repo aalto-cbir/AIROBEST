@@ -9,13 +9,15 @@ class ChenModel(nn.Module):
     Chen et al
     https://elib.dlr.de/106352/2/CNN.pdf
     """
+
     @staticmethod
     def weight_init(m):
         # In the beginning, the weights are randomly initialized
         # with standard deviation 0.001
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
             init.normal_(m.weight, std=0.001)
-            init.zeros_(m.bias)
+            # init.zeros_(m.bias)
+            init.constant_(m.bias, 0)  # for 0.4.0 compatibility
 
     def __init__(self, input_channels, n_classes, patch_size=27, n_planes=32):
         super(ChenModel, self).__init__()
@@ -58,5 +60,5 @@ class ChenModel(nn.Module):
         x = self.dropout(x)
         x = x.view(-1, self.features_size)
         x = self.fc(x)
-        x = x.sigmoid(x)
+        x = F.sigmoid(x)
         return x

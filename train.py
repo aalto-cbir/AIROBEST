@@ -5,6 +5,7 @@
 """
 import argparse
 import os
+import sys
 
 import numpy as np
 import torch
@@ -38,7 +39,7 @@ def parse_args():
                        default=10,
                        help="Number of training epochs, default is 10")
     train.add_argument('-patch_size', type=int,
-                       default=28,
+                       default=27,
                        help="Size of the spatial neighbourhood, default is 11")
     train.add_argument('-lr', type=float,
                        default=1e-3,
@@ -65,6 +66,7 @@ def get_device(id):
     device = torch.device('cpu')
     if id > -1 and torch.cuda.is_available():
         device = torch.device('cuda:{}'.format(id))
+    print("Number of GPUs available %i" % torch.cuda.device_count())
     print("Training on device: %s" % device)
     return device
 
@@ -131,8 +133,13 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
 
 def main():
     print('Start training...')
+    print('System info: ', sys.version)
+    print('Numpy version: ', np.__version__)
+    print('Torch version: ', torch.__version__)
     #######
     options = parse_args()
+    device = get_device(options.gpu)
+    # device = torch.device('cuda:0')
     # TODO: check for minimum patch_size
     print('Training options: {}'.format(options))
 
@@ -143,8 +150,6 @@ def main():
     hyper_image = torch.load(options.src_path).float()
     hyper_labels = torch.load(options.tgt_path).float()
 
-    # Is it necessary?
-    device = get_device(options.gpu)
     hyper_image.to(device)
     hyper_labels.to(device)
 
