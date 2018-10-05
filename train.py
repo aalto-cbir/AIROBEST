@@ -110,8 +110,8 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
         net.train()  # TODO: check docs
 
         for idx, (src, tgt) in enumerate(train_loader):
-            src = src.to(device)
-            tgt = tgt.to(device)
+            src = src.to(device, dtype=torch.float32)
+            tgt = tgt.to(device, dtype=torch.int64)
 
             optimizer.zero_grad()
             predict = net(src)
@@ -148,10 +148,16 @@ def main():
     assert output_classes > 0, 'Number of classes has to be > 0'
 
     hyper_image = torch.load(options.src_path).float()
-    hyper_labels = torch.load(options.tgt_path).float()
+    hyper_labels = torch.load(options.tgt_path)
+    # TODO: only need labels for classification task for now
+    hyper_labels_cls = hyper_labels[:, :, :output_classes]
+    hyper_labels_reg = hyper_labels[:, :, (output_classes+1):]
 
+    # maybe only copy to gpu during computation?
     hyper_image.to(device)
-    hyper_labels.to(device)
+    # hyper_labels.to(device)
+    hyper_labels_cls.to(device, dtype=torch.int64)
+    hyper_labels_reg.to(device, dtype=torch.float32)
 
     R, C, B = hyper_image.shape
     # TODO: Convert image representation, should be done in preprocessing stage
@@ -159,8 +165,6 @@ def main():
 
     train_set, test_set, val_set = split_data(R, C, options.patch_size)
 
-    # TODO: only need labels for classification task for now
-    hyper_labels_cls = hyper_labels[:, :, :output_classes]
     train_loader = get_loader(hyper_image,
                               hyper_labels_cls,
                               train_set,
@@ -179,7 +183,8 @@ def main():
     model = ChenModel(num_bands, output_classes)
     optimizer = optim.Adam(model.parameters(), lr=options.lr)
 
-    loss = nn.CrossEntropyLoss()
+    # loss = nn.CrossEntropyLoss()  # doesn't work for multi-target
+    loss = nn.MultiLabelSoftMarginLoss(size_average=False)
     # End model construction
 
     train(model, optimizer, loss, train_loader, val_loader, device, options)
