@@ -12,7 +12,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 
-from models.model import ChenModel
+from models.model import ChenModel, LeeModel
 from input.utils import split_data
 from input.data_loader import get_loader
 
@@ -113,6 +113,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
         for idx, (src, tgt) in enumerate(train_loader):
             src = src.to(device, dtype=torch.float32)
             tgt = tgt.to(device, dtype=torch.float32)
+            # tgt = tgt.to(device, dtype=torch.int64)
 
             optimizer.zero_grad()
             predict = net(src)
@@ -122,7 +123,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
 
             optimizer.step()
 
-            if train_step % 200 == 0:
+            if train_step % 50 == 0:
                 print('Training loss at step {}: {}'.format(train_step, loss.item()))
 
             np.append(losses, loss.item())
@@ -168,28 +169,33 @@ def main():
     # TODO: Convert image representation, should be done in preprocessing stage
     # hyper_image = hyper_image.permute(2, 0, 1)
 
-    train_set, test_set, val_set = split_data(R, C, options.patch_size)
+    train_set, test_set, val_set = split_data(hyper_labels, R, C, options.patch_size)
 
     train_loader = get_loader(hyper_image,
                               hyper_labels_cls,
                               train_set,
                               options.batch_size,
+                              is_3d_convolution=True,
                               patch_size=options.patch_size,
                               shuffle=True)
     val_loader = get_loader(hyper_image,
                             hyper_labels_cls,
                             val_set,
                             options.batch_size,
+                            is_3d_convolution=True,
                             patch_size=options.patch_size,
                             shuffle=True)
 
     # Model construction
     W, H, num_bands = hyper_image.shape
     model = ChenModel(num_bands, output_classes)
+    # model = LeeModel(num_bands, output_classes)
     optimizer = optim.Adam(model.parameters(), lr=options.lr)
 
-    # loss = nn.CrossEntropyLoss()  # doesn't work for multi-target
-    loss = nn.MultiLabelSoftMarginLoss(size_average=False)
+    # loss = nn.BCELoss()  # doesn't work for multi-target
+    loss = nn.BCEWithLogitsLoss()
+    # loss = nn.CrossEntropyLoss()
+    # loss = nn.MultiLabelSoftMarginLoss(size_average=False)
     # End model construction
 
     train(model, optimizer, loss, train_loader, val_loader, device, options)

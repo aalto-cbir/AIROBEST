@@ -1,8 +1,4 @@
-import numpy as np
-import torch
 import torch.utils.data as data
-import os
-import input.utils as utils
 
 
 class HypDataset(data.Dataset):
@@ -13,7 +9,7 @@ class HypDataset(data.Dataset):
     - {train/test/val}.npy: contain pixel coordinates for each train/test/val set
     """
 
-    def __init__(self, hyper_image, hyper_labels, coords, patch_size):
+    def __init__(self, hyper_image, hyper_labels, coords, patch_size, is_3d_convolution=False):
         """
 
         :param hyper_image: hyperspectral image with shape WxHxC (C: number of channels)
@@ -25,6 +21,7 @@ class HypDataset(data.Dataset):
         self.hyper_image = hyper_image
         self.hyper_labels = hyper_labels
         self.patch_size = patch_size
+        self.is_3d_convolution = is_3d_convolution
         self.hyper_row = self.hyper_image.shape[0]
         self.hyper_col = self.hyper_image.shape[1]
         # assert os.path.exists(coords_path), 'File does not exist in path: %s' % coords_path
@@ -52,7 +49,7 @@ class HypDataset(data.Dataset):
         src = src.permute(2, 0, 1)
 
         # Transform to 4D tensor for 3D convolution
-        if self.patch_size > 1:
+        if self.is_3d_convolution and self.patch_size > 1:
             src = src.unsqueeze(0)
         return src, tgt
 
@@ -60,8 +57,8 @@ class HypDataset(data.Dataset):
         return len(self.coords)
 
 
-def get_loader(hyper_image, hyper_labels, coords, batch_size, patch_size=11, shuffle=False, num_workers=0):
-    dataset = HypDataset(hyper_image, hyper_labels, coords, patch_size)
+def get_loader(hyper_image, hyper_labels, coords, batch_size, patch_size=11, shuffle=False, num_workers=0, is_3d_convolution=False):
+    dataset = HypDataset(hyper_image, hyper_labels, coords, patch_size, is_3d_convolution=is_3d_convolution)
 
     # TODO: collate_fn?
     data_loader = data.DataLoader(dataset=dataset,
