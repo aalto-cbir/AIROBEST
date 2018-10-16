@@ -70,6 +70,7 @@ class LeeModel(nn.Module):
     CONTEXTUAL DEEP CNN BASED HYPERSPECTRAL CLASSIFICATION
     Hyungtae Lee and Heesung Kwon (2016)
     https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7729859
+    https://www.researchgate.net/publication/301876505_Contextual_Deep_CNN_Based_Hyperspectral_Classification
     """
     @staticmethod
     def weight_init(m):
@@ -102,6 +103,8 @@ class LeeModel(nn.Module):
         self.conv6 = nn.Conv2d(128, 128, (1, 1))
         self.conv7 = nn.Conv2d(128, 128, (1, 1))
         self.conv8 = nn.Conv2d(128, n_classes, (1, 1))
+
+        self.pool = nn.MaxPool2d((3, 3), padding=1, stride=1, dilation=1)
 
         self.lrn1 = nn.LocalResponseNorm(256)
         self.lrn2 = nn.LocalResponseNorm(128)
@@ -143,4 +146,5 @@ class LeeModel(nn.Module):
         x = F.relu(self.conv7(x))
         x = self.dropout(x)
         x = self.conv8(x)
+        x = self.pool(x)
         return x

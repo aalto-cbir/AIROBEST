@@ -124,7 +124,8 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
             optimizer.step()
 
             if train_step % 50 == 0:
-                print('Training loss at step {}: {}'.format(train_step, loss.item()))
+                # TODO: with LeeModel, take average of the loss
+                print('Training loss at step {0:d}: {1:0.5f}'.format(train_step, loss.item()))
 
             np.append(losses, loss.item())
             train_step += 1
@@ -171,10 +172,18 @@ def main():
 
     train_set, test_set, val_set = split_data(hyper_labels, R, C, options.patch_size)
 
+    # Model construction
+    W, H, num_bands = hyper_image.shape
+    # model = ChenModel(num_bands, output_classes)
+    # model_name = 'ChenModel'
+    model = LeeModel(num_bands, output_classes)
+    model_name = 'LeeModel'
+
     train_loader = get_loader(hyper_image,
                               hyper_labels_cls,
                               train_set,
                               options.batch_size,
+                              model_name=model_name,
                               is_3d_convolution=True,
                               patch_size=options.patch_size,
                               shuffle=True)
@@ -182,14 +191,11 @@ def main():
                             hyper_labels_cls,
                             val_set,
                             options.batch_size,
+                            model_name=model_name,
                             is_3d_convolution=True,
                             patch_size=options.patch_size,
                             shuffle=True)
 
-    # Model construction
-    W, H, num_bands = hyper_image.shape
-    model = ChenModel(num_bands, output_classes)
-    # model = LeeModel(num_bands, output_classes)
     optimizer = optim.Adam(model.parameters(), lr=options.lr)
 
     # loss = nn.BCELoss()  # doesn't work for multi-target

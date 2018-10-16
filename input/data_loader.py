@@ -9,7 +9,7 @@ class HypDataset(data.Dataset):
     - {train/test/val}.npy: contain pixel coordinates for each train/test/val set
     """
 
-    def __init__(self, hyper_image, hyper_labels, coords, patch_size, is_3d_convolution=False):
+    def __init__(self, hyper_image, hyper_labels, coords, patch_size, model_name, is_3d_convolution=False):
         """
 
         :param hyper_image: hyperspectral image with shape WxHxC (C: number of channels)
@@ -24,6 +24,7 @@ class HypDataset(data.Dataset):
         self.is_3d_convolution = is_3d_convolution
         self.hyper_row = self.hyper_image.shape[0]
         self.hyper_col = self.hyper_image.shape[1]
+        self.model_name = model_name
         # assert os.path.exists(coords_path), 'File does not exist in path: %s' % coords_path
         # self.coords = np.load(coords_path)
         self.coords = coords
@@ -43,7 +44,11 @@ class HypDataset(data.Dataset):
             'Coordinate is invalid: %s %s ' % (row, col)
 
         src = self.hyper_image[row1:(row2+1), col1:(col2+1)]
-        tgt = self.hyper_labels[row, col]  # use labels of center pixel
+        if self.model_name == 'LeeModel':
+            tgt = self.hyper_labels[row1:(row2 + 1), col1:(col2 + 1)]
+            tgt = tgt.permute(2, 0, 1)
+        else:
+            tgt = self.hyper_labels[row, col]  # use labels of center pixel
 
         # convert shape to pytorch image format: [channels x height x width]
         src = src.permute(2, 0, 1)
@@ -57,10 +62,9 @@ class HypDataset(data.Dataset):
         return len(self.coords)
 
 
-def get_loader(hyper_image, hyper_labels, coords, batch_size, patch_size=11, shuffle=False, num_workers=0, is_3d_convolution=False):
-    dataset = HypDataset(hyper_image, hyper_labels, coords, patch_size, is_3d_convolution=is_3d_convolution)
+def get_loader(hyper_image, hyper_labels, coords, batch_size, patch_size=11, model_name='ChenModel', shuffle=False, num_workers=0, is_3d_convolution=False):
+    dataset = HypDataset(hyper_image, hyper_labels, coords, patch_size, model_name=model_name, is_3d_convolution=is_3d_convolution)
 
-    # TODO: collate_fn?
     data_loader = data.DataLoader(dataset=dataset,
                                   batch_size=batch_size,
                                   shuffle=shuffle,
