@@ -98,7 +98,6 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
     :param options:
     :return:
     """
-    device = device
     epoch = options.epoch
     save_every = 1  # specify number of epochs to save model
     train_step = 0
@@ -174,10 +173,14 @@ def main():
 
     # Model construction
     W, H, num_bands = hyper_image.shape
-    # model = ChenModel(num_bands, output_classes)
-    # model_name = 'ChenModel'
-    model = LeeModel(num_bands, output_classes)
-    model_name = 'LeeModel'
+
+    model_name = 'ChenModel'
+    # model_name = 'LeeModel'
+
+    if model_name == 'ChenModel':
+        model = ChenModel(num_bands, output_classes)
+    elif model_name == 'LeeModel':
+        model = LeeModel(num_bands, output_classes)
 
     train_loader = get_loader(hyper_image,
                               hyper_labels_cls,

@@ -10,7 +10,6 @@ import sys
 import pandas as pd
 import numpy as np
 import spectral
-from sklearn.model_selection import train_test_split
 import torch
 
 from tools.hypdatatools_img import get_geotrans
@@ -80,19 +79,6 @@ def parse_args():
     opt = parser.parse_args()
 
     return opt
-
-
-def split_data(rows, cols):
-    coords = []
-    for i in range(rows):
-        for j in range(cols):
-            coords.append((i, j))
-
-    train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
-    train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
-    np.savetxt('train.txt', train, fmt="%d")
-    np.savetxt('test.txt', test, fmt="%d")
-    np.savetxt('val.txt', val, fmt="%d")
 
 
 def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
@@ -280,8 +266,6 @@ def main():
     # forest_labels = torch.from_numpy(forest_data.open_memmap())  # shape: 11996x12517x17
     forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
 
-    # split_data(hyper_image.shape[0], hyper_image.shape[1])
-
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
     hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
     hyper_labels, metadata = process_labels(hyper_labels)
@@ -296,7 +280,6 @@ def main():
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_image), src_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
-
 
     print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
     print('Processed files are stored under "./data" directory')
