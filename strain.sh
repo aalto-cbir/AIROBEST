@@ -2,10 +2,10 @@
 
 #SBATCH -J train
 #SBATCH --mem-per-cpu 10000
-##SBATCH --gres=gpu:k80:1
-#SBATCH --gres=gpu:p100:1
-#SBATCH -p gpu
-#SBATCH -t 4:00:00
+#SBATCH --gres=gpu:k80:1
+##SBATCH --gres=gpu:p100:1
+#SBATCH -p gputest
+#SBATCH -t 0:15:00
 
 id -a
 

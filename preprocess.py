@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import spectral
 import torch
+from sklearn import preprocessing
 
 from tools.hypdatatools_img import get_geotrans
 
@@ -276,6 +277,13 @@ def main():
     src_name = './data/%s.pt' % options.src_file_name
     tgt_name = './data/%s.pt' % options.tgt_file_name
     metadata_name = './data/metadata.pt'
+
+    # L2 normalization
+    R, C, B = hyper_image.shape
+    hyper_image = hyper_image.reshape(-1, B)  # flatten image
+    hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=1)  # l2 normalize along *band* axis
+    # np.linalg.norm(hyper_image[0,:]) should be 1.0
+    hyper_image = hyper_image.reshape(R, C, B)  # reshape to original size
 
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_image), src_name)
