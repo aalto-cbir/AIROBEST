@@ -42,7 +42,7 @@ def parse_args():
                        default=27,
                        help="Size of the spatial neighbourhood, default is 11")
     train.add_argument('-lr', type=float,
-                       default=1e-5,
+                       default=1e-3,
                        help="Learning rate, default is 1e-3")
     train.add_argument('-batch_size', type=int,
                        default=64,
@@ -99,7 +99,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
     :return:
     """
     epoch = options.epoch
-    save_every = 10  # specify number of epochs to save model
+    save_every = 1  # specify number of epochs to save model
     train_step = 0
 
     net.to(device)
@@ -151,14 +151,10 @@ def main():
 
     metadata = get_input_data('./data/metadata.pt')
     output_classes = metadata['num_classes']
-    # output_classes = 2
     assert output_classes > 0, 'Number of classes has to be > 0'
 
     hyper_image = torch.load(options.src_path).float()
     hyper_labels = torch.load(options.tgt_path)
-    # TODO: for testing purpose
-    # hyper_image = hyper_image[500:600, 500:600]
-    # hyper_labels = hyper_labels[500:600, 500:600]
     # TODO: only need labels for classification task for now
     hyper_labels_cls = hyper_labels[:, :, :output_classes]
     hyper_labels_reg = hyper_labels[:, :, (output_classes+1):]
