@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn as nn
+from torchsummary import summary
 
 from models.model import ChenModel, LeeModel
 from input.utils import split_data
@@ -229,6 +230,16 @@ def main():
         checkpoint = torch.load(options.train_from)
         model.load_state_dict(checkpoint)
 
+    model = model.to(device)
+    with torch.no_grad():
+        print('Model summary: ')
+        for input, _ in train_loader:
+            break
+
+        summary(model,
+                input.shape[1:],
+                batch_size=options.batch_size,
+                device=device.type)
     train(model, optimizer, loss, train_loader, val_loader, device, options)
     print('End training...')
 

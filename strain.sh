@@ -20,12 +20,14 @@ module list
 
 python -u train.py  -src_path ./data/hyperspectral_src_l2norm.pt \
                     -tgt_path ./data/hyperspectral_tgt.pt \
-                    -gpu 0 \
-                    -patch_size 35 \
-                    -patch_step 10 \
-                    -lr 1e-5 \
-                    -batch_size 128 \
-                    -epoch 20
+                    -patch_size 1 \
+                    -patch_step 1 \
+                    -lr 1e-4 \
+                    -batch_size 14630 \
+                    -epoch 22 \
+                    -model ChenModel \
+                    -save_dir Chen-model-1 \
+                    -gpu 0
 
 echo -e "\n ... printing job stats .... \n"
 used_slurm_resources.bash
