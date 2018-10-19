@@ -18,31 +18,20 @@ def in_hypmap(W, H, x, y, patch_size):
     return x1 >= 0 and y1 >= 0 and x2 <= W and y2 <= H
 
 
-def split_data(labels, rows, cols, patch_size):
+def split_data(rows, cols, patch_size, step=1):
     """
     Split dataset into train, test, val sets based on the coordinates
     of each pixel in the hyperspectral image
-    :param labels: labels for hyperspectral image
     :param rows: number of rows in hyperspectral image
     :param cols: number of columns in hyperspectral image
     :param patch_size: patch_size for a training image patch, expected to be an odd number
+    :param step: amount of pixels to skip while looping through the hyperspectral image
     :return: train, test, val lists with the pixel positions
     """
-    # mask = np.sum(labels.numpy(), axis=2)
-    # assign 0 to all pixels around the edges
-    # pad = patch_size // 2
-    # mask[:pad, :] = 0
-    # mask[(rows - pad+1):rows, :] = 0
-    # mask[:, :pad] = 0
-    # mask[:, (cols - pad + 1):cols] = 0
-    # x_pos, y_pos = np.nonzero(mask)
-    # coords = [(x, y) for x, y in zip(x_pos, y_pos)]
     coords = []
-    for i in range(patch_size // 2, rows - patch_size // 2):
-        for j in range(patch_size // 2, cols - patch_size // 2):
+    for i in range(patch_size // 2, rows - patch_size // 2, step):
+        for j in range(patch_size // 2, cols - patch_size // 2, step):
             coords.append((i, j))
-            # if np.sum(labels.numpy()[:, :, 0:31] != 0):  # very expensive operation
-            #     coords.append((i, j))
 
     train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
     train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)

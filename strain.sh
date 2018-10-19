@@ -14,10 +14,14 @@ module list
 
 #env
 
-python -u train.py -src_path ./data/hyperspectral_src.pt \
-                     -tgt_path ./data/hyperspectral_tgt.pt \
-                     -gpu 0 \
-                     -epoch 20
+python -u train.py  -src_path ./data/hyperspectral_src_l2norm2.pt \
+                    -tgt_path ./data/hyperspectral_tgt.pt \
+                    -gpu 0 \
+                    -patch_size 35 \
+                    -patch_step 10 \
+                    -lr 1e-5 \
+                    -batch_size 128 \
+                    -epoch 20
 
 echo -e "\n ... \n training ended \n ... \n printing job stats .... \n"
 used_slurm_resources.bash

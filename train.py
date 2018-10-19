@@ -41,12 +41,21 @@ def parse_args():
     train.add_argument('-patch_size', type=int,
                        default=27,
                        help="Size of the spatial neighbourhood, default is 11")
+    train.add_argument('-patch_step', type=int,
+                       default=5,
+                       help="Number of pixels to skip for each image patch while sliding over the training image")
     train.add_argument('-lr', type=float,
                        default=1e-3,
                        help="Learning rate, default is 1e-3")
     train.add_argument('-batch_size', type=int,
                        default=64,
                        help="Batch size, default is 64")
+    train.add_argument('-train_from', type=str,
+                       default='',
+                       help="Path to checkpoint to start training from.")
+    train.add_argument('-model', type=str,
+                       default='ChenModel', choices=['ChenModel', 'LeeModel'],
+                       help="Name of deep learning model to train with, options are [ChenModel | LeeModel]")
     opt = parser.parse_args()
 
     return opt
@@ -134,7 +143,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
             validate(net, val_loader, device)
 
         if e % save_every == 0:
-            save_checkpoint(net, 'Chen-model', e)
+            save_checkpoint(net, options.model, e)
 
 
 def main():
@@ -169,13 +178,12 @@ def main():
     # TODO: Convert image representation, should be done in preprocessing stage
     # hyper_image = hyper_image.permute(2, 0, 1)
 
-    train_set, test_set, val_set = split_data(hyper_labels, R, C, options.patch_size)
+    train_set, test_set, val_set = split_data(R, C, options.patch_size, options.patch_step)
 
     # Model construction
     W, H, num_bands = hyper_image.shape
 
-    model_name = 'ChenModel'
-    # model_name = 'LeeModel'
+    model_name = options.model
 
     if model_name == 'ChenModel':
         model = ChenModel(num_bands, output_classes)
@@ -206,6 +214,11 @@ def main():
     # loss = nn.CrossEntropyLoss()
     # loss = nn.MultiLabelSoftMarginLoss(size_average=False)
     # End model construction
+
+    if options.train_from:
+        print('Loading checkpoint from %s' % options.train_from)
+        checkpoint = torch.load(options.train_from)
+        model.load_state_dict(checkpoint)
 
     train(model, optimizer, loss, train_loader, val_loader, device, options)
     print('End training...')

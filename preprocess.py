@@ -268,7 +268,8 @@ def main():
     forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
-    hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
+    # Disable human data for now as there are only 19 Titta points in the map
+    # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
     hyper_labels, metadata = process_labels(hyper_labels)
 
     if not os.path.isdir('./data'):
