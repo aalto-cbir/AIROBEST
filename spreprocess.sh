@@ -18,5 +18,5 @@ module list
 srun python -u preprocess.py    -src_file_name hyperspectral_src_l2norm \
                                 -tgt_file_name hyperspectral_tgt
 
-echo -e "\n ... \n training ended \n ... \n printing job stats .... \n"
+echo -e "\n ... printing job stats .... \n"
 used_slurm_resources.bash

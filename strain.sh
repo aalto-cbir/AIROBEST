@@ -27,5 +27,5 @@ python -u train.py  -src_path ./data/hyperspectral_src_l2norm.pt \
                     -batch_size 128 \
                     -epoch 20
 
-echo -e "\n ... \n training ended \n ... \n printing job stats .... \n"
+echo -e "\n ... printing job stats .... \n"
 used_slurm_resources.bash

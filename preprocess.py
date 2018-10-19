@@ -256,10 +256,7 @@ def main():
     print(options)
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_gt = get_geotrans(options.hyper_data_path)
-    # hyper_image = torch.from_numpy(hyper_data.open_memmap())
     hyper_image = hyper_data.open_memmap()
-    # TODO: remove
-    # hyper_image = hyper_image[:100, :150, :]
 
     forest_data = spectral.open_image(options.forest_data_path)
     forest_gt = get_geotrans(options.forest_data_path)

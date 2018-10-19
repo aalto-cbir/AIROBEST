@@ -56,6 +56,9 @@ def parse_args():
     train.add_argument('-model', type=str,
                        default='ChenModel', choices=['ChenModel', 'LeeModel'],
                        help="Name of deep learning model to train with, options are [ChenModel | LeeModel]")
+    train.add_argument('-save_dir', type=str,
+                       default='',
+                       help="Directory to save model. If not specified, use name of the model")
     opt = parser.parse_args()
 
     return opt
@@ -81,6 +84,14 @@ def get_device(id):
 
 
 def save_checkpoint(model, model_name, epoch):
+    """
+    Saving model's state dict
+    TODO: also save optimizer' state dict and model options and enable restoring model from last training step
+    :param model: model to save
+    :param model_name: model will be saved under this name
+    :param epoch: the epoch when model is saved
+    :return:
+    """
     path = './checkpoint/{}'.format(model_name)
     if not os.path.exists(path):
         os.makedirs(path)
@@ -115,7 +126,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
 
     losses = np.array([])
 
-    for e in range(epoch):
+    for e in range(epoch + 1):
         net.train()  # TODO: check docs
 
         for idx, (src, tgt) in enumerate(train_loader):
@@ -143,7 +154,8 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
             validate(net, val_loader, device)
 
         if e % save_every == 0:
-            save_checkpoint(net, options.model, e)
+            save_dir = options.save_dir or options.model
+            save_checkpoint(net, save_dir, e + 1)
 
 
 def main():
@@ -154,7 +166,6 @@ def main():
     #######
     options = parse_args()
     device = get_device(options.gpu)
-    # device = torch.device('cuda:0')
     # TODO: check for minimum patch_size
     print('Training options: {}'.format(options))
 
@@ -166,7 +177,7 @@ def main():
     hyper_labels = torch.load(options.tgt_path)
     # TODO: only need labels for classification task for now
     hyper_labels_cls = hyper_labels[:, :, :output_classes]
-    hyper_labels_reg = hyper_labels[:, :, (output_classes+1):]
+    hyper_labels_reg = hyper_labels[:, :, (output_classes + 1):]
 
     # maybe only copy to gpu during computation?
     hyper_image.to(device)
@@ -175,8 +186,6 @@ def main():
     hyper_labels_reg.to(device, dtype=torch.float32)
 
     R, C, B = hyper_image.shape
-    # TODO: Convert image representation, should be done in preprocessing stage
-    # hyper_image = hyper_image.permute(2, 0, 1)
 
     train_set, test_set, val_set = split_data(R, C, options.patch_size, options.patch_step)
 
