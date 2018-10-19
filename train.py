@@ -42,7 +42,7 @@ def parse_args():
                        default=27,
                        help="Size of the spatial neighbourhood, default is 11")
     train.add_argument('-patch_step', type=int,
-                       default=5,
+                       default=1,
                        help="Number of pixels to skip for each image patch while sliding over the training image")
     train.add_argument('-lr', type=float,
                        default=1e-3,
@@ -186,7 +186,7 @@ def main():
     model_name = options.model
 
     if model_name == 'ChenModel':
-        model = ChenModel(num_bands, output_classes)
+        model = ChenModel(num_bands, output_classes, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, output_classes)
 

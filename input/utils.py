@@ -35,9 +35,6 @@ def split_data(rows, cols, patch_size, step=1):
 
     train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
     train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
-    # np.savetxt('train.txt', train, fmt="%d")
-    # np.savetxt('test.txt', test, fmt="%d")
-    # np.savetxt('val.txt', val, fmt="%d")
 
     print('Number of pixels: ', len(coords))
     return train, test, val

@@ -2,9 +2,13 @@
 
 #SBATCH -J train
 #SBATCH --mem-per-cpu 10000
+##SBATCH --gres=gpu:k80:1
+##SBATCH -p gputest
+##SBATCH -t 0:15:00
+
 #SBATCH --gres=gpu:p100:1
 #SBATCH -p gpu
-#SBATCH -t 2:00:00
+#SBATCH -t 4:00:00
 
 id -a
 
@@ -14,7 +18,7 @@ module list
 
 #env
 
-python -u train.py  -src_path ./data/hyperspectral_src_l2norm2.pt \
+python -u train.py  -src_path ./data/hyperspectral_src_l2norm.pt \
                     -tgt_path ./data/hyperspectral_tgt.pt \
                     -gpu 0 \
                     -patch_size 35 \
