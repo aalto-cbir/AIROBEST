@@ -110,16 +110,28 @@ def compute_accuracy(predict, tgt, metadata):
     :param metadata:
     :return:
     """
-    # TODO: fix me
     n_correct = 0  # vector or scalar?
-    return n_correct
+
+    categorical = metadata['categorical']
+    num_classes = 0
+    for idx, values in categorical.items():
+        count = len(values)
+        pred_class = predict[:, num_classes:(num_classes + count)]
+        tgt_class = tgt[:, num_classes:(num_classes + count)]
+        _, pred_indices = pred_class.max(1)  # get max indices along axis 1
+        _, tgt_indices = tgt_class.max(1)
+        true_positive = torch.sum(pred_indices == tgt_indices).item()
+        n_correct += true_positive
+        num_classes += count
+
+    # return n_correct divided by number of labels
+    return n_correct / len(categorical.keys())
 
 
 def validate(net, loss_fn, val_loader, device, metadata):
-    # TODO: fix me
     sum_loss = 0.0
     N_samples = 0
-    n_correct = 0
+    n_correct = 0.0
     for idx, (src, tgt) in enumerate(val_loader):
         src = src.to(device, dtype=torch.float32)
         tgt = tgt.to(device, dtype=torch.float32)
@@ -133,7 +145,7 @@ def validate(net, loss_fn, val_loader, device, metadata):
 
     # return average validation loss
     average_loss = sum_loss / len(val_loader)
-    accuracy = n_correct / N_samples
+    accuracy = n_correct * 100 / N_samples
     return average_loss, accuracy
 
 
@@ -195,10 +207,11 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
         metric = epoch_loss
         if val_loader is not None:
             val_loss, val_accuracy = validate(net, loss_fn, val_loader, device, metadata)
-            print('Validation loss: {:.5f}'.format(val_loss))
+            print('Validation loss: {:.5f}, validation accuracy: {:.2f}%'.format(val_loss, val_accuracy))
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
             metric = val_loss
+            # metric = -val_accuracy
 
         if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
             scheduler.step(metric)
@@ -278,8 +291,8 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=options.lr)
 
-    # loss = nn.BCELoss()  # doesn't work for multi-target
-    loss = nn.BCEWithLogitsLoss()
+    loss = nn.BCELoss()  # doesn't work for multi-target
+    # loss = nn.BCEWithLogitsLoss()
     # loss = nn.CrossEntropyLoss()
     # loss = nn.MultiLabelSoftMarginLoss(size_average=False)
     # End model construction
