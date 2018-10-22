@@ -12,6 +12,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from torchsummary import summary
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from models.model import ChenModel, LeeModel
 from input.utils import split_data
@@ -101,27 +102,63 @@ def save_checkpoint(model, model_name, epoch):
     print('Saving model at epoch %d' % epoch)
 
 
-def validate(net, val_loader, device):
+def compute_accuracy(predict, tgt, metadata):
+    """
+    Return number of correct prediction of each tgt label
+    :param predict:
+    :param tgt:
+    :param metadata:
+    :return:
+    """
     # TODO: fix me
-    pass
+    n_correct = 0  # vector or scalar?
+    return n_correct
 
 
-def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
+def validate(net, loss_fn, val_loader, device, metadata):
+    # TODO: fix me
+    sum_loss = 0.0
+    N_samples = 0
+    n_correct = 0
+    for idx, (src, tgt) in enumerate(val_loader):
+        src = src.to(device, dtype=torch.float32)
+        tgt = tgt.to(device, dtype=torch.float32)
+        N_samples += len(src)
+
+        with torch.no_grad():
+            predict = net(src)
+            loss = loss_fn(predict, tgt)
+            sum_loss += loss.item()
+            n_correct += compute_accuracy(predict, tgt, metadata)
+
+    # return average validation loss
+    average_loss = sum_loss / len(val_loader)
+    accuracy = n_correct / N_samples
+    return average_loss, accuracy
+
+
+def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, options, scheduler=None):
     """
     Training
 
     TODO: checkpoint
     :param net:
     :param optimizer:
-    :param loss:
+    :param loss_fn:
     :param train_loader:
     :param val_loader:
+    :param device:
+    :param metadata:
     :param options:
+    :param scheduler:
     :return:
     """
     epoch = options.epoch
     save_every = 1  # specify number of epochs to save model
     train_step = 0
+    sum_loss = 0.0
+    val_losses = []
+    val_accuracies = []
 
     net.to(device)
 
@@ -129,6 +166,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
 
     for e in range(epoch + 1):
         net.train()  # TODO: check docs
+        epoch_loss = 0.0
 
         for idx, (src, tgt) in enumerate(train_loader):
             src = src.to(device, dtype=torch.float32)
@@ -138,22 +176,43 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, options):
             optimizer.zero_grad()
             predict = net(src)
             loss = loss_fn(predict, tgt)
+            sum_loss += loss.item()
+            epoch_loss += loss.item()
 
             loss.backward()
-
             optimizer.step()
 
             if train_step % 20 == 0:
                 # TODO: with LeeModel, take average of the loss
-                print('Training loss at step {0:d}: {1:0.5f}'.format(train_step, loss.item()))
+                print('Training loss at step {}: {:.5f}, average loss: {:.5f}'
+                      .format(train_step, loss.item(), sum_loss / (train_step + 1)))
 
             np.append(losses, loss.item())
             train_step += 1
 
-        # TODO: validation
+        epoch_loss = epoch_loss / len(train_loader)
+        print('Average epoch loss: {:.5f}'.format(epoch_loss))
+        metric = epoch_loss
         if val_loader is not None:
-            validate(net, val_loader, device)
+            val_loss, val_accuracy = validate(net, loss_fn, val_loader, device, metadata)
+            print('Validation loss: {:.5f}'.format(val_loss))
+            val_losses.append(val_loss)
+            val_accuracies.append(val_accuracy)
+            metric = val_loss
 
+        if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+            scheduler.step(metric)
+        elif scheduler is not None:
+            # other scheduler types
+            scheduler.step()
+
+        # Get current learning rate. Is there any better way?
+        lr = None
+        for param_group in optimizer.param_groups:
+            if param_group['lr'] is not None:
+                lr = param_group['lr']
+                break
+        print('Current learning rate: {}'.format(lr))
         if e % save_every == 0:
             save_dir = options.save_dir or options.model
             save_checkpoint(net, save_dir, e + 1)
@@ -240,7 +299,10 @@ def main():
                 input.shape[1:],
                 batch_size=options.batch_size,
                 device=device.type)
-    train(model, optimizer, loss, train_loader, val_loader, device, options)
+
+    scheduler = ReduceLROnPlateau(optimizer, 'min')
+    train(model, optimizer, loss, train_loader,
+          val_loader, device, metadata, options, scheduler=scheduler)
     print('End training...')
 
 
