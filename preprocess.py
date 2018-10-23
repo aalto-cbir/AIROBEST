@@ -5,14 +5,17 @@
 """
 import argparse
 import os
+import sys
 
 import pandas as pd
 import numpy as np
 import spectral
-from sklearn.model_selection import train_test_split
 import torch
+from sklearn import preprocessing
 
 from tools.hypdatatools_img import get_geotrans
+
+sys.stdout.flush()
 
 
 # TODO: move to tools
@@ -55,7 +58,8 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-hyper_data_path',
                         required=False, type=str,
-                        default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
+                        default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
+                        # default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data')
     parser.add_argument('-forest_data_path',
                         required=False, type=str,
@@ -78,19 +82,6 @@ def parse_args():
     return opt
 
 
-def split_data(rows, cols):
-    coords = []
-    for i in range(rows):
-        for j in range(cols):
-            coords.append((i, j))
-
-    train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
-    train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
-    np.savetxt('train.txt', train, fmt="%d")
-    np.savetxt('test.txt', test, fmt="%d")
-    np.savetxt('val.txt', val, fmt="%d")
-
-
 def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
     """
     Create hyperspectral labels from forest data
@@ -98,9 +89,12 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
     :param forest_labels: W2xH2xB
     :return:
     """
+    # TODO: confirm if forest data and hyperspectral data
+    # are spatially correspondent. If yes, no need to convert
+    # all the pixels, only the first pixel is needed
     forest_rows, forest_cols, num_bands = forest_labels.shape
     rows, cols, _ = hyper_image.shape
-    hyper_labels = torch.zeros(rows, cols, num_bands)
+    hyper_labels = np.zeros((rows, cols, num_bands))
 
     for row in range(rows):
         for col in range(cols):
@@ -189,35 +183,109 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
     return hyper_labels
 
 
+def process_labels(labels):
+    """
+    - Calculate class member for each categorical class
+    - Sort class members and assign indices
+    - Transform data to vector of 0 and 1 indicating which class and label
+    the data belongs to
+    Example:
+        0 fertilityclass    1  2  3          ->  0  1  2
+        2 maintreespecies   2  4  6          ->  3  4  5
+
+    The label [2, 6] (fertiliticlass: 2, maintreespieces: 6) will become
+    [0, 1, 0, 0, 0, 1]
+    :param labels: shape (RxCxB)
+    :return:
+    """
+    # TODO: get 'categorical_classes' from parameter
+    # Current categorical classes: fertilityclass (0), soiltype (1), developmentclass (2), maintreespecies (9)
+    categorical_classes = [0, 1, 2, 9]  # contains the indices of the categorical classes in forest data
+    useless_bands = [3]
+    transformed_data = None
+    num_classes = 0
+    metadata = {}
+    categorical = {}
+    R, C, _ = labels.shape
+
+    for i in categorical_classes:
+        band = labels[:, :, i]
+        unique_values = np.unique(band)
+        print('Band {}: {}'.format(i, unique_values))
+        index_dict = dict([(val, idx) for (idx, val) in enumerate(unique_values)])
+        categorical[i] = unique_values
+        one_hot = np.zeros((R, C, len(unique_values)), dtype=int)
+        for row in range(R):
+            for col in range(C):
+                idx = index_dict[band[row, col]]  # get the index of the value  band[row, col] in one-hot vector
+                one_hot[row, col, idx] = 1
+
+        if transformed_data is None:
+            transformed_data = one_hot
+        else:
+            transformed_data = np.concatenate((transformed_data, one_hot), axis=2)
+        num_classes += len(unique_values)
+
+    # delete all the categorical classes from label data
+    labels = np.delete(labels, np.append(categorical_classes, useless_bands), axis=2)
+
+    # normalize data for regression task
+    for i in range(labels.shape[2]):
+        max = np.max(labels[:, :, i])
+        min = np.min(labels[:, :, i])
+        if max != min:
+            labels[:, :, i] = (labels[:, :, i] - min) / (max - min)
+        elif max != 0:  # if all items have the same non-zero value
+            labels[:, :, i].fill(0.5)
+        else:  # if all are 0, if this happens, consider remove the whole band from data
+            labels[:, :, i].fill(0.0)
+            print('Band with index %d has all zero values, consider removing it!' % i)
+
+    # concatenate with newly transformed data
+    labels = np.concatenate((transformed_data, labels), axis=2)
+
+    metadata['categorical'] = categorical
+    metadata['num_classes'] = num_classes
+    return labels, metadata
+
+
 def main():
     print('Start processing data...')
     #######
     options = parse_args()
     print(options)
     hyper_data = spectral.open_image(options.hyper_data_path)
-    hyper_image = torch.from_numpy(hyper_data.open_memmap())
-    # TODO: remove
-    # hyper_image = hyper_image[:100, :150, :]
     hyper_gt = get_geotrans(options.hyper_data_path)
+    hyper_image = hyper_data.open_memmap()
 
     forest_data = spectral.open_image(options.forest_data_path)
-    forest_labels = torch.from_numpy(forest_data.open_memmap())
     forest_gt = get_geotrans(options.forest_data_path)
     forest_columns = forest_data.metadata['band names']
-
-    # split_data(hyper_image.shape[0], hyper_image.shape[1])
+    # forest_labels = torch.from_numpy(forest_data.open_memmap())  # shape: 11996x12517x17
+    forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
-    hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
+    # Disable human data for now as there are only 19 Titta points in the map
+    # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
+    hyper_labels, metadata = process_labels(hyper_labels)
 
     if not os.path.isdir('./data'):
         os.makedirs('./data')
 
     src_name = './data/%s.pt' % options.src_file_name
     tgt_name = './data/%s.pt' % options.tgt_file_name
+    metadata_name = './data/metadata.pt'
 
-    torch.save(hyper_image, src_name)
-    torch.save(hyper_labels, tgt_name)
+    # L2 normalization
+    R, C, B = hyper_image.shape
+    hyper_image = hyper_image.reshape(-1, B)  # flatten image
+    hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=1)  # l2 normalize along *band* axis
+    # np.linalg.norm(hyper_image[0,:]) should be 1.0
+    hyper_image = hyper_image.reshape(R, C, B)  # reshape to original size
+
+    torch.save(metadata, metadata_name)
+    torch.save(torch.from_numpy(hyper_image), src_name)
+    torch.save(torch.from_numpy(hyper_labels), tgt_name)
 
     print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
     print('Processed files are stored under "./data" directory')
