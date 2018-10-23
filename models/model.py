@@ -38,7 +38,7 @@ class ChenModel(nn.Module):
 
         self.dropout = nn.Dropout(p=0.5)
 
-        self.apply(self.weight_init)
+        # self.apply(self.weight_init)
 
     def _get_final_flattened_size(self):
         with torch.no_grad():

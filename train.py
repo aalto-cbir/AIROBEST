@@ -61,6 +61,9 @@ def parse_args():
     train.add_argument('-save_dir', type=str,
                        default='',
                        help="Directory to save model. If not specified, use name of the model")
+    train.add_argument('-report_frequency', type=int,
+                       default=20,
+                       help="Report training result every 'report_frequency' steps")
     opt = parser.parse_args()
 
     return opt
@@ -99,7 +102,7 @@ def save_checkpoint(model, model_name, epoch):
         os.makedirs(path)
 
     torch.save(model.state_dict(), '{}/{}_{}.pt'.format(path, model_name, epoch))
-    print('Saving model at epoch %d' % epoch)
+    print('Saving model at epoch %d' % (epoch + 1))
 
 
 def compute_accuracy(predict, tgt, metadata):
@@ -118,20 +121,21 @@ def compute_accuracy(predict, tgt, metadata):
         count = len(values)
         pred_class = predict[:, num_classes:(num_classes + count)]
         tgt_class = tgt[:, num_classes:(num_classes + count)]
-        _, pred_indices = pred_class.max(1)  # get max indices along axis 1
-        _, tgt_indices = tgt_class.max(1)
+        pred_indices = pred_class.argmax(1)  # get indices of max values in each row
+        tgt_indices = tgt_class.argmax(1)
         true_positive = torch.sum(pred_indices == tgt_indices).item()
         n_correct += true_positive
         num_classes += count
 
-    # return n_correct divided by number of labels
-    return n_correct / len(categorical.keys())
+    # return n_correct divided by number of labels * batch_size
+    return n_correct / (len(predict) * len(categorical.keys()))
 
 
 def validate(net, loss_fn, val_loader, device, metadata):
-    sum_loss = 0.0
+    sum_loss = 0
     N_samples = 0
-    n_correct = 0.0
+    n_correct = 0
+    sum_accuracy = 0
     for idx, (src, tgt) in enumerate(val_loader):
         src = src.to(device, dtype=torch.float32)
         tgt = tgt.to(device, dtype=torch.float32)
@@ -141,11 +145,13 @@ def validate(net, loss_fn, val_loader, device, metadata):
             predict = net(src)
             loss = loss_fn(predict, tgt)
             sum_loss += loss.item()
-            n_correct += compute_accuracy(predict, tgt, metadata)
+            # n_correct += compute_accuracy(predict, tgt, metadata)
+            sum_accuracy += compute_accuracy(predict, tgt, metadata)
 
     # return average validation loss
     average_loss = sum_loss / len(val_loader)
-    accuracy = n_correct * 100 / N_samples
+    # accuracy = n_correct * 100 / N_samples
+    accuracy = sum_accuracy * 100 / len(val_loader)
     return average_loss, accuracy
 
 
@@ -174,7 +180,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
 
     net.to(device)
 
-    losses = np.array([])
+    losses = []
 
     for e in range(epoch + 1):
         net.train()  # TODO: check docs
@@ -190,16 +196,16 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
             loss = loss_fn(predict, tgt)
             sum_loss += loss.item()
             epoch_loss += loss.item()
+            losses.append(loss.item())
 
             loss.backward()
             optimizer.step()
 
-            if train_step % 20 == 0:
+            if train_step % options.report_frequency == 0:
                 # TODO: with LeeModel, take average of the loss
                 print('Training loss at step {}: {:.5f}, average loss: {:.5f}'
-                      .format(train_step, loss.item(), sum_loss / (train_step + 1)))
+                      .format(train_step, loss.item(), np.mean(losses[-100:])))
 
-            np.append(losses, loss.item())
             train_step += 1
 
         epoch_loss = epoch_loss / len(train_loader)
@@ -210,8 +216,8 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
             print('Validation loss: {:.5f}, validation accuracy: {:.2f}%'.format(val_loss, val_accuracy))
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
-            metric = val_loss
-            # metric = -val_accuracy
+            # metric = val_loss
+            metric = -val_accuracy
 
         if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
             scheduler.step(metric)
@@ -313,7 +319,7 @@ def main():
                 batch_size=options.batch_size,
                 device=device.type)
 
-    scheduler = ReduceLROnPlateau(optimizer, 'min')
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     train(model, optimizer, loss, train_loader,
           val_loader, device, metadata, options, scheduler=scheduler)
     print('End training...')
