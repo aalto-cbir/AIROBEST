@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.path 
 import gdal
 from osgeo import ogr,osr
-from hypdatatools_img import *
+from tools.hypdatatools_img import *
 
 # Mapping of Python types to OGR field types. Using other data types with this library will just fail
 OGR_FIELD_TYPES_MAP = { int: ogr.OFTInteger, float: ogr.OFTReal, str: ogr.OFTString }
