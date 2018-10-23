@@ -87,7 +87,7 @@ for filename_mv in filenames_mv:
     #  XXX Can we be sure that the last is the latest? it may be best to convert text to date and check explicitly XXX 
     operationdate_latest = [ i[-1][0] if len(i)>0 else None for i in q ]
     
-    listcounter = 0 # count how many elemnts are already in outlist_extra
+    listcounter = 0 # count how many elements are already in outlist_extra
     
     if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( operationdate_latest )
@@ -260,6 +260,16 @@ for filename_mv in filenames_mv:
         outlist_extra[listcounter] += LAI
         outlist_extra[listcounter+1] += LAI_effective
     listcounter += 2
+    
+    # -------- dbh from treestandsummary [float]
+    q=geopackage_getspecificvalues1(c,"treestandsummary","meandiameter",tsids_i,"treestandid")
+    dbh = [ i[0][0] if len(i)>0 else 0 for i in q ]
+    if len(outlist_extra) < listcounter + 1 :
+        outlist_extra.append( dbh )
+        outlist_extranames.append( "dbh" )
+    else:
+        outlist_extra[listcounter] += dbh
+    listcounter += 1   
 
     conn.close()
 
@@ -310,10 +320,13 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
         print(" converting other tree species to birch")
     elif name == "basalarea":
         data_converted = [ int(i*100) for i in data ]
-        outnames[i_zip] = name+"*100_m2/ha"
+        outnames[i_zip] = name+"*100_[m2/ha]"
     elif name == "meanheight":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"_[cm]"        
+    elif name == "dbh":
+        data_converted = [ int(i*100) for i in data ]
+        outnames[i_zip] = name+"*100_[cm]"
     elif name == "LAI":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"*100"
