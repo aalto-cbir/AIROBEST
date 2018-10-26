@@ -88,11 +88,12 @@ def get_device(id):
     return device
 
 
-def save_checkpoint(model, model_name, epoch):
+def save_checkpoint(model, optimizer, model_name, epoch, options):
     """
     Saving model's state dict
     TODO: also save optimizer' state dict and model options and enable restoring model from last training step
     :param model: model to save
+    :param optimizer: optimizer to save
     :param model_name: model will be saved under this name
     :param epoch: the epoch when model is saved
     :return:
@@ -101,8 +102,14 @@ def save_checkpoint(model, model_name, epoch):
     if not os.path.exists(path):
         os.makedirs(path)
 
-    torch.save(model.state_dict(), '{}/{}_{}.pt'.format(path, model_name, epoch))
-    print('Saving model at epoch %d' % (epoch + 1))
+    state = {
+        'epoch': epoch,
+        'model': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'options': options
+    }
+    torch.save(state, '{}/{}_{}.pt'.format(path, model_name, epoch))
+    print('Saving model at epoch %d' % epoch)
 
 
 def compute_accuracy(predict, tgt, metadata):
@@ -172,6 +179,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
     :return:
     """
     epoch = options.epoch
+    start_epoch = options.start_epoch + 1 if 'start_epoch' in options else 1
     save_every = 1  # specify number of epochs to save model
     train_step = 0
     sum_loss = 0.0
@@ -182,7 +190,8 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
 
     losses = []
 
-    for e in range(epoch + 1):
+    print('Start training from epoch: ', start_epoch)
+    for e in range(start_epoch, epoch + 1):
         net.train()  # TODO: check docs
         epoch_loss = 0.0
 
@@ -234,7 +243,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
         print('Current learning rate: {}'.format(lr))
         if e % save_every == 0:
             save_dir = options.save_dir or options.model
-            save_checkpoint(net, save_dir, e + 1)
+            save_checkpoint(net, optimizer, save_dir, e, options)
 
 
 def main():
@@ -243,10 +252,18 @@ def main():
     print('Numpy version: ', np.__version__)
     print('Torch version: ', torch.__version__)
     #######
+    checkpoint = None
     options = parse_args()
-    device = get_device(options.gpu)
+
+    if options.train_from:
+        print('Loading checkpoint from %s' % options.train_from)
+        print('Overwrite options with values from checkpoint!!!')
+        checkpoint = torch.load(options.train_from)
+        options = checkpoint['options']
+
     # TODO: check for minimum patch_size
     print('Training options: {}'.format(options))
+    device = get_device(options.gpu)
 
     metadata = get_input_data('./data/metadata.pt')
     output_classes = metadata['num_classes']
@@ -295,20 +312,21 @@ def main():
                             patch_size=options.patch_size,
                             shuffle=True)
 
+    # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
+    model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=options.lr)
 
     loss = nn.BCELoss()  # doesn't work for multi-target
     # loss = nn.BCEWithLogitsLoss()
     # loss = nn.CrossEntropyLoss()
-    # loss = nn.MultiLabelSoftMarginLoss(size_average=False)
+    # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
     # End model construction
 
-    if options.train_from:
-        print('Loading checkpoint from %s' % options.train_from)
-        checkpoint = torch.load(options.train_from)
-        model.load_state_dict(checkpoint)
+    if checkpoint is not None:
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        setattr(options, 'start_epoch', checkpoint['epoch'])
 
-    model = model.to(device)
     with torch.no_grad():
         print('Model summary: ')
         for input, _ in train_loader:
@@ -319,7 +337,11 @@ def main():
                 batch_size=options.batch_size,
                 device=device.type)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=4)
+    print(model)
+    print('Loss function:', loss)
+    print('Scheduler:', scheduler.__dict__)
+
     train(model, optimizer, loss, train_loader,
           val_loader, device, metadata, options, scheduler=scheduler)
     print('End training...')

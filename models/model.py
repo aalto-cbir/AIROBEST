@@ -16,7 +16,8 @@ class ChenModel(nn.Module):
         # In the beginning, the weights are randomly initialized
         # with standard deviation 0.001
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
-            init.normal_(m.weight, std=0.001)
+            # init.normal_(m.weight, std=0.001)
+            init.xavier_normal_(m.weight)
             # init.zeros_(m.bias)
             init.constant_(m.bias, 0)  # for 0.4.0 compatibility
 
@@ -36,9 +37,9 @@ class ChenModel(nn.Module):
 
         self.fc = nn.Linear(self.features_size, n_classes)
 
-        self.dropout = nn.Dropout(p=0.5)
+        self.dropout = nn.Dropout(p=0.3)
 
-        # self.apply(self.weight_init)
+        self.apply(self.weight_init)
 
     def _get_final_flattened_size(self):
         with torch.no_grad():
