@@ -16,9 +16,7 @@ class ChenModel(nn.Module):
         # In the beginning, the weights are randomly initialized
         # with standard deviation 0.001
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
-            # init.normal_(m.weight, std=0.001)
             init.xavier_normal_(m.weight)
-            # init.zeros_(m.bias)
             init.constant_(m.bias, 0)  # for 0.4.0 compatibility
 
     def __init__(self, input_channels, n_classes, patch_size=27, n_planes=32):
@@ -76,8 +74,8 @@ class LeeModel(nn.Module):
     @staticmethod
     def weight_init(m):
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
-            init.kaiming_uniform_(m.weight)
-            # init.zeros_(m.bias)
+            # init.kaiming_uniform_(m.weight)
+            init.xavier_normal_(m.weight)
             init.constant_(m.bias, 0)
 
     def __init__(self, in_channels, n_classes):
@@ -148,4 +146,5 @@ class LeeModel(nn.Module):
         x = self.dropout(x)
         x = self.conv8(x)
         x = self.pool(x)
+        x = F.sigmoid(x)
         return x

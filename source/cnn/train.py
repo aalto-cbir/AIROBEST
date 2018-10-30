@@ -32,6 +32,10 @@ def parse_args():
                         required=False, type=str,
                         default='../../data/hyperspectral_tgt.pt',
                         help='Path to training labels')
+    parser.add_argument('-metadata',
+                        type=str,
+                        default='../../data/metadata.pt',
+                        help="Path to training metadata (generated during preprocessing stage)")
     parser.add_argument('-gpu',
                         type=int, default=-1,
                         help="Gpu id to be used, default is -1 which means cpu")
@@ -122,14 +126,22 @@ def compute_accuracy(predict, tgt, metadata):
     """
     n_correct = 0  # vector or scalar?
 
+    # reshape tensor in (*, n_cls) format
+    # this is mainly for LeeModel that output the prediction for all pixels
+    # from the source image with shape (batch, patch, patch, n_cls)
+    n_cls = tgt.shape[-1]
+    predict = predict.view(-1, n_cls)
+    tgt = tgt.view(-1, n_cls)
+    #####
+
     categorical = metadata['categorical']
     num_classes = 0
     for idx, values in categorical.items():
         count = len(values)
         pred_class = predict[:, num_classes:(num_classes + count)]
         tgt_class = tgt[:, num_classes:(num_classes + count)]
-        pred_indices = pred_class.argmax(1)  # get indices of max values in each row
-        tgt_indices = tgt_class.argmax(1)
+        pred_indices = pred_class.argmax(-1)  # get indices of max values in each row
+        tgt_indices = tgt_class.argmax(-1)
         true_positive = torch.sum(pred_indices == tgt_indices).item()
         n_correct += true_positive
         num_classes += count
@@ -265,7 +277,7 @@ def main():
     print('Training options: {}'.format(options))
     device = get_device(options.gpu)
 
-    metadata = get_input_data('../../data/metadata.pt')
+    metadata = get_input_data(options.metadata)
     output_classes = metadata['num_classes']
     assert output_classes > 0, 'Number of classes has to be > 0'
 
@@ -292,8 +304,14 @@ def main():
 
     if model_name == 'ChenModel':
         model = ChenModel(num_bands, output_classes, patch_size=options.patch_size, n_planes=32)
+        loss = nn.BCELoss()
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, output_classes)
+        loss = nn.BCELoss()
+
+    # loss = nn.BCEWithLogitsLoss()
+    # loss = nn.CrossEntropyLoss()
+    # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
 
     train_loader = get_loader(hyper_image,
                               hyper_labels_cls,
@@ -316,10 +334,6 @@ def main():
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=options.lr)
 
-    loss = nn.BCELoss()  # doesn't work for multi-target
-    # loss = nn.BCEWithLogitsLoss()
-    # loss = nn.CrossEntropyLoss()
-    # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
     # End model construction
 
     if checkpoint is not None:

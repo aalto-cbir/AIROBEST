@@ -16,6 +16,7 @@ module list
 
 python -u train.py  -src_path ../../data/hyperspectral_src_l2norm_channel_wise.pt \
                     -tgt_path ../../data/hyperspectral_tgt.pt \
+                    -metadata ../../data/metadata.pt \
                     -patch_size 35 \
                     -patch_step 3 \
                     -lr 0.001 \
