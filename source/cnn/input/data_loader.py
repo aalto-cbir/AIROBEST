@@ -62,7 +62,8 @@ class HypDataset(data.Dataset):
         return len(self.coords)
 
 
-def get_loader(hyper_image, hyper_labels, coords, batch_size, patch_size=11, model_name='ChenModel', shuffle=False, num_workers=0, is_3d_convolution=False):
+def get_loader(hyper_image, hyper_labels, coords, batch_size, patch_size=11, model_name='ChenModel',
+               shuffle=False, num_workers=0, is_3d_convolution=False):
     dataset = HypDataset(hyper_image, hyper_labels, coords, patch_size, model_name=model_name, is_3d_convolution=is_3d_convolution)
 
     data_loader = data.DataLoader(dataset=dataset,

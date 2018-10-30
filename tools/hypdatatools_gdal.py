@@ -1,5 +1,11 @@
 """
-The libraries for working with hyperspectral data in ENVI file format
+Copyright (C) 2017,2018  Matti Mõttus 
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+You should have received a copy of the GNU General Public License along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+"""
+Some functions for working with hyperspectral data in ENVI file format
 requires Spectral Python
 the functions here depend also on GDAL.
 """
@@ -268,7 +274,7 @@ def plot_clearvectors( figurehandle ):
     figurehandle.canvas.draw()
 
   
-def pixel_coords( hypfilename, point, areasize, areaunit, areashape, hypdata=None, hypdata_map=None ):
+def pixel_coords( hypfilename, point, areasize, areaunit, areashape, hypdata=None ):
     """
     give the coordinates of pixels (in image coordinates) to be sampled around point
     hypfilename: the filename or spectral file  handle of hyperspectral data file
@@ -276,7 +282,7 @@ def pixel_coords( hypfilename, point, areasize, areaunit, areashape, hypdata=Non
     areasize: size of the sampled area (circle diameter, square side)
     areaunit: unit in which areasize is given ("meter" or "pixel", first letter suffices)
     areashape: 'circle' or 'square' (first letter suffices)
-    hypdata, hypdata_map: spectral handles for file and memmap (optional). If given, hypfilename will not be reopened
+    hypdata, spectral handle for file the file. If given, hypfilename will not be reopened
     output
     coordlist: list of two lists: ( (y) , (x) )
      NOTE! Envi BIL files have y (line) for first coordinate [0], x (pixel) for second [1]
@@ -285,15 +291,14 @@ def pixel_coords( hypfilename, point, areasize, areaunit, areashape, hypdata=Non
         # open the file if not open yet. This only gives access to metadata.                
         hypdata = spectral.open_image( hypfilename )
         # open the file as memmap to get the actual hyperspectral data
-        hypdata_map = hypdata.open_memmap()
         print("opening file "+hypfilename)
         if hypdata.interleave == 1:
             print("Band interleaved (BIL)")
         else:
             print( hypfilename + " not BIL -- opening still as BIL -- will be slower" )
     
-    lines = hypdata_map.shape[0]
-    pixels = hypdata_map.shape[1]
+    lines = hypdata.nrows
+    pixels = hypdata.ncols
 
     if areaunit == 'meters':
         # find out what one pixel means in meters in each image direction
@@ -308,7 +313,7 @@ def pixel_coords( hypfilename, point, areasize, areaunit, areashape, hypdata=Non
         ptom_i = 1 # integer one
         ptom_j = 1
     
-    xy = world2image( hypfilename, point ) # a row matrix
+    xy = world2image( hypfilename, np.matrix(point) ) # a row matrix
     
     if areaunit[0]=='p' and areasize//2 != areasize/2 and areashape[0]=='s' :
         # odd number of pixels, choose symmetrically around center
@@ -496,7 +501,7 @@ def extract_spectrum( hypfilename, pointarray, areasize, areaunit, areashape, hy
     Nlist = []
     # loop over points
     for xy_row in pointarray:
-        coordlist = pixel_coords( hypfilename, xy_row, areasize, areaunit, areashape, hypdata, hypdata_map )
+        coordlist = pixel_coords( hypfilename, xy_row, areasize, areaunit, areashape, hypdata )
         if len( coordlist ) > 0:
             spectrum,N = avg_spectrum( hypfilename, coordlist, DIV, hypdata, hypdata_map )
             spectrumlist.append( spectrum )
@@ -1517,7 +1522,7 @@ def envifilecomponents( filename_in, localprintcommand=None ):
         headerfile = filename_in
         datafile = envihdr2datafile( headerfile, localprintcommand=localprintcommand  )
     else:
-        # assume we werre given the data file name
+        # assume we were given the data file name
         datafile = filename_in
         headerfile = envidata2hdrfile( datafile, localprintcommand=localprintcommand )
     return datafile, headerfile
@@ -1535,7 +1540,7 @@ def envi_addheaderfield( envifilename, fieldname, values, checkifexists=True, lo
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
         localprintcommand = lambda x: print(x,end='')
-    functionname = 'envifilecomponents(): ' # for messaging
+    functionname = 'envi_addheaderfield(): ' # for messaging
 
     datafile,hdrfile = envifilecomponents( envifilename, localprintcommand=localprintcommand )
     

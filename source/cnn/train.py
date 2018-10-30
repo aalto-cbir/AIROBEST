@@ -26,12 +26,16 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-src_path',
                         required=False, type=str,
-                        default='./data/hyperspectral_src_l2norm2.pt',
+                        default='../../data/hyperspectral_src_l2norm.pt',
                         help='Path to training input file')
     parser.add_argument('-tgt_path',
                         required=False, type=str,
-                        default='./data/hyperspectral_tgt_sm.pt',
+                        default='../../data/hyperspectral_tgt.pt',
                         help='Path to training labels')
+    parser.add_argument('-metadata',
+                        type=str,
+                        default='../../data/metadata.pt',
+                        help="Path to training metadata (generated during preprocessing stage)")
     parser.add_argument('-gpu',
                         type=int, default=-1,
                         help="Gpu id to be used, default is -1 which means cpu")
@@ -61,6 +65,9 @@ def parse_args():
     train.add_argument('-save_dir', type=str,
                        default='',
                        help="Directory to save model. If not specified, use name of the model")
+    train.add_argument('-report_frequency', type=int,
+                       default=20,
+                       help="Report training result every 'report_frequency' steps")
     opt = parser.parse_args()
 
     return opt
@@ -85,11 +92,12 @@ def get_device(id):
     return device
 
 
-def save_checkpoint(model, model_name, epoch):
+def save_checkpoint(model, optimizer, model_name, epoch, options):
     """
     Saving model's state dict
     TODO: also save optimizer' state dict and model options and enable restoring model from last training step
     :param model: model to save
+    :param optimizer: optimizer to save
     :param model_name: model will be saved under this name
     :param epoch: the epoch when model is saved
     :return:
@@ -98,7 +106,13 @@ def save_checkpoint(model, model_name, epoch):
     if not os.path.exists(path):
         os.makedirs(path)
 
-    torch.save(model.state_dict(), '{}/{}_{}.pt'.format(path, model_name, epoch))
+    state = {
+        'epoch': epoch,
+        'model': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'options': options
+    }
+    torch.save(state, '{}/{}_{}.pt'.format(path, model_name, epoch))
     print('Saving model at epoch %d' % epoch)
 
 
@@ -110,16 +124,37 @@ def compute_accuracy(predict, tgt, metadata):
     :param metadata:
     :return:
     """
-    # TODO: fix me
     n_correct = 0  # vector or scalar?
-    return n_correct
+
+    # reshape tensor in (*, n_cls) format
+    # this is mainly for LeeModel that output the prediction for all pixels
+    # from the source image with shape (batch, patch, patch, n_cls)
+    n_cls = tgt.shape[-1]
+    predict = predict.view(-1, n_cls)
+    tgt = tgt.view(-1, n_cls)
+    #####
+
+    categorical = metadata['categorical']
+    num_classes = 0
+    for idx, values in categorical.items():
+        count = len(values)
+        pred_class = predict[:, num_classes:(num_classes + count)]
+        tgt_class = tgt[:, num_classes:(num_classes + count)]
+        pred_indices = pred_class.argmax(-1)  # get indices of max values in each row
+        tgt_indices = tgt_class.argmax(-1)
+        true_positive = torch.sum(pred_indices == tgt_indices).item()
+        n_correct += true_positive
+        num_classes += count
+
+    # return n_correct divided by number of labels * batch_size
+    return n_correct / (len(predict) * len(categorical.keys()))
 
 
 def validate(net, loss_fn, val_loader, device, metadata):
-    # TODO: fix me
-    sum_loss = 0.0
+    sum_loss = 0
     N_samples = 0
     n_correct = 0
+    sum_accuracy = 0
     for idx, (src, tgt) in enumerate(val_loader):
         src = src.to(device, dtype=torch.float32)
         tgt = tgt.to(device, dtype=torch.float32)
@@ -129,11 +164,13 @@ def validate(net, loss_fn, val_loader, device, metadata):
             predict = net(src)
             loss = loss_fn(predict, tgt)
             sum_loss += loss.item()
-            n_correct += compute_accuracy(predict, tgt, metadata)
+            # n_correct += compute_accuracy(predict, tgt, metadata)
+            sum_accuracy += compute_accuracy(predict, tgt, metadata)
 
     # return average validation loss
     average_loss = sum_loss / len(val_loader)
-    accuracy = n_correct / N_samples
+    # accuracy = n_correct * 100 / N_samples
+    accuracy = sum_accuracy * 100 / len(val_loader)
     return average_loss, accuracy
 
 
@@ -154,6 +191,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
     :return:
     """
     epoch = options.epoch
+    start_epoch = options.start_epoch + 1 if 'start_epoch' in options else 1
     save_every = 1  # specify number of epochs to save model
     train_step = 0
     sum_loss = 0.0
@@ -162,9 +200,10 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
 
     net.to(device)
 
-    losses = np.array([])
+    losses = []
 
-    for e in range(epoch + 1):
+    print('Start training from epoch: ', start_epoch)
+    for e in range(start_epoch, epoch + 1):
         net.train()  # TODO: check docs
         epoch_loss = 0.0
 
@@ -178,16 +217,16 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
             loss = loss_fn(predict, tgt)
             sum_loss += loss.item()
             epoch_loss += loss.item()
+            losses.append(loss.item())
 
             loss.backward()
             optimizer.step()
 
-            if train_step % 20 == 0:
+            if train_step % options.report_frequency == 0:
                 # TODO: with LeeModel, take average of the loss
                 print('Training loss at step {}: {:.5f}, average loss: {:.5f}'
-                      .format(train_step, loss.item(), sum_loss / (train_step + 1)))
+                      .format(train_step, loss.item(), np.mean(losses[-100:])))
 
-            np.append(losses, loss.item())
             train_step += 1
 
         epoch_loss = epoch_loss / len(train_loader)
@@ -195,10 +234,11 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
         metric = epoch_loss
         if val_loader is not None:
             val_loss, val_accuracy = validate(net, loss_fn, val_loader, device, metadata)
-            print('Validation loss: {:.5f}'.format(val_loss))
+            print('Validation loss: {:.5f}, validation accuracy: {:.2f}%'.format(val_loss, val_accuracy))
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
-            metric = val_loss
+            # metric = val_loss
+            metric = -val_accuracy
 
         if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
             scheduler.step(metric)
@@ -215,7 +255,7 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
         print('Current learning rate: {}'.format(lr))
         if e % save_every == 0:
             save_dir = options.save_dir or options.model
-            save_checkpoint(net, save_dir, e + 1)
+            save_checkpoint(net, optimizer, save_dir, e, options)
 
 
 def main():
@@ -224,12 +264,20 @@ def main():
     print('Numpy version: ', np.__version__)
     print('Torch version: ', torch.__version__)
     #######
+    checkpoint = None
     options = parse_args()
-    device = get_device(options.gpu)
+
+    if options.train_from:
+        print('Loading checkpoint from %s' % options.train_from)
+        print('Overwrite options with values from checkpoint!!!')
+        checkpoint = torch.load(options.train_from)
+        options = checkpoint['options']
+
     # TODO: check for minimum patch_size
     print('Training options: {}'.format(options))
+    device = get_device(options.gpu)
 
-    metadata = get_input_data('./data/metadata.pt')
+    metadata = get_input_data(options.metadata)
     output_classes = metadata['num_classes']
     assert output_classes > 0, 'Number of classes has to be > 0'
 
@@ -256,8 +304,14 @@ def main():
 
     if model_name == 'ChenModel':
         model = ChenModel(num_bands, output_classes, patch_size=options.patch_size, n_planes=32)
+        loss = nn.BCELoss()
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, output_classes)
+        loss = nn.BCELoss()
+
+    # loss = nn.BCEWithLogitsLoss()
+    # loss = nn.CrossEntropyLoss()
+    # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
 
     train_loader = get_loader(hyper_image,
                               hyper_labels_cls,
@@ -276,20 +330,17 @@ def main():
                             patch_size=options.patch_size,
                             shuffle=True)
 
+    # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
+    model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=options.lr)
 
-    # loss = nn.BCELoss()  # doesn't work for multi-target
-    loss = nn.BCEWithLogitsLoss()
-    # loss = nn.CrossEntropyLoss()
-    # loss = nn.MultiLabelSoftMarginLoss(size_average=False)
     # End model construction
 
-    if options.train_from:
-        print('Loading checkpoint from %s' % options.train_from)
-        checkpoint = torch.load(options.train_from)
-        model.load_state_dict(checkpoint)
+    if checkpoint is not None:
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        setattr(options, 'start_epoch', checkpoint['epoch'])
 
-    model = model.to(device)
     with torch.no_grad():
         print('Model summary: ')
         for input, _ in train_loader:
@@ -300,7 +351,11 @@ def main():
                 batch_size=options.batch_size,
                 device=device.type)
 
-    scheduler = ReduceLROnPlateau(optimizer, 'min')
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+    print(model)
+    print('Loss function:', loss)
+    print('Scheduler:', scheduler.__dict__)
+
     train(model, optimizer, loss, train_loader,
           val_loader, device, metadata, options, scheduler=scheduler)
     print('End training...')

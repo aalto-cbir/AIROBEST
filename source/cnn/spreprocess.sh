@@ -16,7 +16,8 @@ module list
 
 
 srun python -u preprocess.py    -src_file_name hyperspectral_src_l2norm \
-                                -tgt_file_name hyperspectral_tgt
+                                -tgt_file_name hyperspectral_tgt \
+                                -forest_data_path /proj/deepsat/hyperspectral/forestdata_00.hdr
 
 echo -e "\n ... printing job stats .... \n"
 used_slurm_resources.bash
