@@ -26,11 +26,11 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-src_path',
                         required=False, type=str,
-                        default='./data/hyperspectral_src_l2norm2.pt',
+                        default='../../data/hyperspectral_src_l2norm.pt',
                         help='Path to training input file')
     parser.add_argument('-tgt_path',
                         required=False, type=str,
-                        default='./data/hyperspectral_tgt_sm.pt',
+                        default='../../data/hyperspectral_tgt.pt',
                         help='Path to training labels')
     parser.add_argument('-gpu',
                         type=int, default=-1,
@@ -265,7 +265,7 @@ def main():
     print('Training options: {}'.format(options))
     device = get_device(options.gpu)
 
-    metadata = get_input_data('./data/metadata.pt')
+    metadata = get_input_data('../../data/metadata.pt')
     output_classes = metadata['num_classes']
     assert output_classes > 0, 'Number of classes has to be > 0'
 
@@ -337,7 +337,7 @@ def main():
                 batch_size=options.batch_size,
                 device=device.type)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=4)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     print(model)
     print('Loss function:', loss)
     print('Scheduler:', scheduler.__dict__)

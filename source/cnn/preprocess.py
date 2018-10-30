@@ -279,7 +279,7 @@ def main():
     # L2 normalization
     R, C, B = hyper_image.shape
     hyper_image = hyper_image.reshape(-1, B)  # flatten image
-    hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=1)  # l2 normalize along *band* axis
+    hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=0)  # l2 normalize along *band* axis
     # np.linalg.norm(hyper_image[0,:]) should be 1.0
     hyper_image = hyper_image.reshape(R, C, B)  # reshape to original size
 
