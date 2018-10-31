@@ -13,6 +13,7 @@ import spectral
 import torch
 from sklearn import preprocessing
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
 
 sys.stdout.flush()
@@ -77,6 +78,10 @@ def parse_args():
                         required=False, type=str,
                         default='hyperspectral_tgt',
                         help='Save hyperspectral labels with this name')
+    parser.add_argument('-normalize_method',
+                        type=str,
+                        default='l2norm_along_channel', choices=['l2norm_along_channel', 'l2norm_channel_wise'],
+                        help="Normalization method for input image")
     opt = parser.parse_args()
 
     return opt
@@ -272,14 +277,17 @@ def main():
     if not os.path.isdir('./data'):
         os.makedirs('./data')
 
-    src_name = './data/%s.pt' % options.src_file_name
+    src_name = './data/%s_%s.pt' % (options.src_file_name, options.normalize_method)
     tgt_name = './data/%s.pt' % options.tgt_file_name
     metadata_name = './data/metadata.pt'
 
     # L2 normalization
     R, C, B = hyper_image.shape
     hyper_image = hyper_image.reshape(-1, B)  # flatten image
-    hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=0)  # l2 normalize along *band* axis
+    if options.normalize_method == 'l2norm_along_channel':  # l2 normalize along *band* axis
+        hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=1)
+    elif options.normalize_method == 'l2norm_channel_wise':  # l2 normalize separately for each channel
+        hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=0)
     # np.linalg.norm(hyper_image[0,:]) should be 1.0
     hyper_image = hyper_image.reshape(R, C, B)  # reshape to original size
 
