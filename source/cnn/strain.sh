@@ -23,7 +23,7 @@ python -u train.py  -src_path ../../data/hyperspectral_src_l2norm_channel_wise.p
                     -batch_size 64 \
                     -epoch 50 \
                     -model ChenModel \
-                    -save_dir Chen-model-291018 \
+                    -save_dir Chen-model-311018 \
                     -report_frequency 50 \
                     -gpu 0
 

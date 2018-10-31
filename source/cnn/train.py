@@ -150,22 +150,26 @@ def compute_accuracy(predict, tgt, metadata):
     return n_correct / (len(predict) * len(categorical.keys()))
 
 
-def validate(net, loss_fn, val_loader, device, metadata):
+def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
     sum_loss = 0
     N_samples = 0
     n_correct = 0
     sum_accuracy = 0
-    for idx, (src, tgt) in enumerate(val_loader):
+    for idx, (src, tgt_cls, tgt_reg) in enumerate(val_loader):
         src = src.to(device, dtype=torch.float32)
-        tgt = tgt.to(device, dtype=torch.float32)
+        tgt_cls = tgt_cls.to(device, dtype=torch.float32)
+        tgt_reg = tgt_reg.to(device, dtype=torch.float32)
         N_samples += len(src)
 
         with torch.no_grad():
-            predict = net(src)
-            loss = loss_fn(predict, tgt)
+            pred_cls, pred_reg = net(src)
+            loss_cls = criterion_cls(pred_cls, tgt_cls)
+            loss_reg = criterion_reg(pred_reg, tgt_reg)
+
+            loss = loss_cls + loss_reg
             sum_loss += loss.item()
             # n_correct += compute_accuracy(predict, tgt, metadata)
-            sum_accuracy += compute_accuracy(predict, tgt, metadata)
+            sum_accuracy += compute_accuracy(pred_cls, tgt_cls, metadata)
 
     # return average validation loss
     average_loss = sum_loss / len(val_loader)
@@ -174,14 +178,15 @@ def validate(net, loss_fn, val_loader, device, metadata):
     return average_loss, accuracy
 
 
-def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, options, scheduler=None):
+def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader, device, metadata, options, scheduler=None):
     """
     Training
 
     TODO: checkpoint
     :param net:
     :param optimizer:
-    :param loss_fn:
+    :param criterion_cls:
+    :param criterion_reg:
     :param train_loader:
     :param val_loader:
     :param device:
@@ -207,14 +212,17 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
         net.train()  # TODO: check docs
         epoch_loss = 0.0
 
-        for idx, (src, tgt) in enumerate(train_loader):
+        for idx, (src, tgt_cls, tgt_reg) in enumerate(train_loader):
             src = src.to(device, dtype=torch.float32)
-            tgt = tgt.to(device, dtype=torch.float32)
+            tgt_cls = tgt_cls.to(device, dtype=torch.float32)
+            tgt_reg = tgt_reg.to(device, dtype=torch.float32)
             # tgt = tgt.to(device, dtype=torch.int64)
 
             optimizer.zero_grad()
-            predict = net(src)
-            loss = loss_fn(predict, tgt)
+            pred_cls, pred_reg = net(src)
+            loss_cls = criterion_cls(pred_cls, tgt_cls)
+            loss_reg = criterion_reg(pred_reg, tgt_reg)
+            loss = loss_cls + loss_reg
             sum_loss += loss.item()
             epoch_loss += loss.item()
             losses.append(loss.item())
@@ -224,8 +232,8 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
 
             if train_step % options.report_frequency == 0:
                 # TODO: with LeeModel, take average of the loss
-                print('Training loss at step {}: {:.5f}, average loss: {:.5f}'
-                      .format(train_step, loss.item(), np.mean(losses[-100:])))
+                print('Training loss at step {}: {:.5f}, average loss: {:.5f}, cls_loss: {:.5f}, reg_loss: {:.5f}'
+                      .format(train_step, loss.item(), np.mean(losses[-100:]), loss_cls.item(), loss_reg.item()))
 
             train_step += 1
 
@@ -233,12 +241,12 @@ def train(net, optimizer, loss_fn, train_loader, val_loader, device, metadata, o
         print('Average epoch loss: {:.5f}'.format(epoch_loss))
         metric = epoch_loss
         if val_loader is not None:
-            val_loss, val_accuracy = validate(net, loss_fn, val_loader, device, metadata)
+            val_loss, val_accuracy = validate(net, criterion_cls, criterion_reg, val_loader, device, metadata)
             print('Validation loss: {:.5f}, validation accuracy: {:.2f}%'.format(val_loss, val_accuracy))
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
-            # metric = val_loss
-            metric = -val_accuracy
+            metric = val_loss
+            # metric = -val_accuracy
 
         if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
             scheduler.step(metric)
@@ -278,15 +286,16 @@ def main():
     device = get_device(options.gpu)
 
     metadata = get_input_data(options.metadata)
-    output_classes = metadata['num_classes']
-    assert output_classes > 0, 'Number of classes has to be > 0'
+    out_cls = metadata['num_classes']
+    assert out_cls > 0, 'Number of classes has to be > 0'
 
-    hyper_image = torch.load(options.src_path).float()
+    hyper_image = torch.load(options.src_path)
     hyper_labels = torch.load(options.tgt_path)
     # TODO: only need labels for classification task for now
-    hyper_labels_cls = hyper_labels[:, :, :output_classes]
-    hyper_labels_reg = hyper_labels[:, :, (output_classes + 1):]
+    hyper_labels_cls = hyper_labels[:, :, :out_cls]
+    hyper_labels_reg = hyper_labels[:, :, (out_cls + 1):]
 
+    out_reg = hyper_labels_reg.shape[2]
     # maybe only copy to gpu during computation?
     hyper_image.to(device)
     # hyper_labels.to(device)
@@ -303,11 +312,13 @@ def main():
     model_name = options.model
 
     if model_name == 'ChenModel':
-        model = ChenModel(num_bands, output_classes, patch_size=options.patch_size, n_planes=32)
-        loss = nn.BCELoss()
+        model = ChenModel(num_bands, out_cls, out_reg, patch_size=options.patch_size, n_planes=32)
+        loss_cls = nn.BCELoss()
+        loss_reg = nn.MSELoss()
     elif model_name == 'LeeModel':
-        model = LeeModel(num_bands, output_classes)
-        loss = nn.BCELoss()
+        model = LeeModel(num_bands, out_cls)
+        loss_cls = nn.BCELoss()
+        loss_reg = nn.MSELoss()
 
     # loss = nn.BCEWithLogitsLoss()
     # loss = nn.CrossEntropyLoss()
@@ -315,6 +326,7 @@ def main():
 
     train_loader = get_loader(hyper_image,
                               hyper_labels_cls,
+                              hyper_labels_reg,
                               train_set,
                               options.batch_size,
                               model_name=model_name,
@@ -323,6 +335,7 @@ def main():
                               shuffle=True)
     val_loader = get_loader(hyper_image,
                             hyper_labels_cls,
+                            hyper_labels_reg,
                             val_set,
                             options.batch_size,
                             model_name=model_name,
@@ -343,7 +356,7 @@ def main():
 
     with torch.no_grad():
         print('Model summary: ')
-        for input, _ in train_loader:
+        for input, _, _ in train_loader:
             break
 
         summary(model,
@@ -353,10 +366,11 @@ def main():
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     print(model)
-    print('Loss function:', loss)
+    print('Classification loss function:', loss_cls)
+    print('Regression loss function:', loss_reg)
     print('Scheduler:', scheduler.__dict__)
 
-    train(model, optimizer, loss, train_loader,
+    train(model, optimizer, loss_cls, loss_reg, train_loader,
           val_loader, device, metadata, options, scheduler=scheduler)
     print('End training...')
 

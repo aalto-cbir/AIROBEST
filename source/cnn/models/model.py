@@ -19,7 +19,7 @@ class ChenModel(nn.Module):
             init.xavier_normal_(m.weight)
             init.constant_(m.bias, 0)  # for 0.4.0 compatibility
 
-    def __init__(self, input_channels, n_classes, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_cls, out_reg, patch_size=27, n_planes=32):
         super(ChenModel, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -33,7 +33,8 @@ class ChenModel(nn.Module):
 
         self.features_size = self._get_final_flattened_size()
 
-        self.fc = nn.Linear(self.features_size, n_classes)
+        self.fc_cls1 = nn.Linear(self.features_size, out_cls)
+        self.fc_reg1 = nn.Linear(self.features_size, out_reg)
 
         self.dropout = nn.Dropout(p=0.3)
 
@@ -59,9 +60,15 @@ class ChenModel(nn.Module):
         x = F.relu(self.conv3(x))
         x = self.dropout(x)
         x = x.view(-1, self.features_size)
-        x = self.fc(x)
-        x = F.sigmoid(x)
-        return x
+
+        # for classification task
+        x_cls = self.fc_cls1(x)
+        x_cls = F.sigmoid(x_cls)
+
+        # for regression task
+        x_reg = self.fc_reg1(x)
+
+        return x_cls, x_reg
 
 
 class LeeModel(nn.Module):
