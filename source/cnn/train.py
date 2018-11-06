@@ -69,6 +69,9 @@ def parse_args():
     train.add_argument('-report_frequency', type=int,
                        default=20,
                        help="Report training result every 'report_frequency' steps")
+    train.add_argument('-use_visdom', type=bool,
+                       default=True,
+                       help="Enable visdom to visualize training process")
     train.add_argument('-visdom_server', type=str,
                        default='http://localhost',
                        help="Default visdom server")
@@ -183,7 +186,7 @@ def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
 
 
 def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader, device, metadata,
-          options, scheduler=None, visualize=True):
+          options, scheduler=None, visualize=None):
     """
     Training
 
@@ -201,9 +204,6 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
     :param visualize:
     :return:
     """
-    # 'server' option is only needed because of this error: https://github.com/facebookresearch/visdom/issues/490
-    vis = visdom.Visdom(server=options.visdom_server, env='train')
-
     epoch = options.epoch
     start_epoch = options.start_epoch + 1 if 'start_epoch' in options else 1
     save_every = 1  # specify number of epochs to save model
@@ -247,8 +247,8 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
                 avg_losses.append(np.mean(losses[-100:]))
                 print('Training loss at step {}: {:.5f}, average loss: {:.5f}, cls_loss: {:.5f}, reg_loss: {:.5f}'
                       .format(train_step, loss.item(), avg_losses[-1], loss_cls.item(), loss_reg.item()))
-                if visualize:
-                    loss_window = vis.line(X=np.arange(0, train_step + 1, options.report_frequency),
+                if visualize is not None:
+                    loss_window = visualize.line(X=np.arange(0, train_step + 1, options.report_frequency),
                                            Y=avg_losses,
                                            update='update' if loss_window else None,
                                            win=loss_window,
@@ -304,6 +304,14 @@ def main():
     # TODO: check for minimum patch_size
     print('Training options: {}'.format(options))
     device = get_device(options.gpu)
+
+    visualize = options.use_visdom
+    if visualize:
+        # 'server' option is needed because of this error: https://github.com/facebookresearch/visdom/issues/490
+        vis = visdom.Visdom(server=options.visdom_server, env='Train')
+        if not vis.check_connection:
+            print("Visdom server is unreachable. Run `bash server.sh` to start the server.")
+            vis = None
 
     metadata = get_input_data(options.metadata)
     out_cls = metadata['num_classes']
@@ -391,7 +399,7 @@ def main():
     print('Scheduler:', scheduler.__dict__)
 
     train(model, optimizer, loss_cls, loss_reg, train_loader,
-          val_loader, device, metadata, options, scheduler=scheduler)
+          val_loader, device, metadata, options, scheduler=scheduler, visualize=vis)
     print('End training...')
 
 
