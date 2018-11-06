@@ -33,8 +33,10 @@ class ChenModel(nn.Module):
 
         self.features_size = self._get_final_flattened_size()
 
-        self.fc_cls1 = nn.Linear(self.features_size, out_cls)
-        self.fc_reg1 = nn.Linear(self.features_size, out_reg)
+        self.fc_cls1 = nn.Linear(self.features_size, 200)
+        self.fc_cls2 = nn.Linear(200, out_cls)
+        self.fc_reg1 = nn.Linear(self.features_size, 200)
+        self.fc_reg2 = nn.Linear(200, out_reg)
 
         self.dropout = nn.Dropout(p=0.3)
 
@@ -62,11 +64,12 @@ class ChenModel(nn.Module):
         x = x.view(-1, self.features_size)
 
         # for classification task
-        x_cls = self.fc_cls1(x)
-        x_cls = F.sigmoid(x_cls)
+        x_cls = F.relu(self.fc_cls1(x))
+        x_cls = F.sigmoid(self.fc_cls2(x_cls))
 
         # for regression task
-        x_reg = self.fc_reg1(x)
+        x_reg = F.relu(self.fc_reg1(x))
+        x_reg = self.fc_reg2(x_reg)  # Do not use Relu at final FC layer because of Relu is not differentiable
 
         return x_cls, x_reg
 

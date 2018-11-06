@@ -165,8 +165,8 @@ def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
             pred_cls, pred_reg = net(src)
             loss_cls = criterion_cls(pred_cls, tgt_cls)
             loss_reg = criterion_reg(pred_reg, tgt_reg)
+            loss = loss_cls + 3*loss_reg
 
-            loss = loss_cls + loss_reg
             sum_loss += loss.item()
             # n_correct += compute_accuracy(predict, tgt, metadata)
             sum_accuracy += compute_accuracy(pred_cls, tgt_cls, metadata)
@@ -209,7 +209,7 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
 
     print('Start training from epoch: ', start_epoch)
     for e in range(start_epoch, epoch + 1):
-        net.train()  # TODO: check docs
+        net.train()
         epoch_loss = 0.0
 
         for idx, (src, tgt_cls, tgt_reg) in enumerate(train_loader):
@@ -222,7 +222,8 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
             pred_cls, pred_reg = net(src)
             loss_cls = criterion_cls(pred_cls, tgt_cls)
             loss_reg = criterion_reg(pred_reg, tgt_reg)
-            loss = loss_cls + loss_reg
+            loss = loss_cls + 3*loss_reg
+
             sum_loss += loss.item()
             epoch_loss += loss.item()
             losses.append(loss.item())
