@@ -13,6 +13,7 @@ import torch.optim as optim
 import torch.nn as nn
 from torchsummary import summary
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import visdom
 
 from models.model import ChenModel, LeeModel
 from input.utils import split_data
@@ -68,6 +69,9 @@ def parse_args():
     train.add_argument('-report_frequency', type=int,
                        default=20,
                        help="Report training result every 'report_frequency' steps")
+    train.add_argument('-visdom_server', type=str,
+                       default='http://localhost',
+                       help="Default visdom server")
     opt = parser.parse_args()
 
     return opt
@@ -165,7 +169,7 @@ def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
             pred_cls, pred_reg = net(src)
             loss_cls = criterion_cls(pred_cls, tgt_cls)
             loss_reg = criterion_reg(pred_reg, tgt_reg)
-            loss = loss_cls + 3*loss_reg
+            loss = loss_cls + 3 * loss_reg
 
             sum_loss += loss.item()
             # n_correct += compute_accuracy(predict, tgt, metadata)
@@ -178,7 +182,8 @@ def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
     return average_loss, accuracy
 
 
-def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader, device, metadata, options, scheduler=None):
+def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader, device, metadata,
+          options, scheduler=None, visualize=True):
     """
     Training
 
@@ -193,15 +198,21 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
     :param metadata:
     :param options:
     :param scheduler:
+    :param visualize:
     :return:
     """
+    # 'server' option is only needed because of this error: https://github.com/facebookresearch/visdom/issues/490
+    vis = visdom.Visdom(server=options.visdom_server, env='train')
+
     epoch = options.epoch
     start_epoch = options.start_epoch + 1 if 'start_epoch' in options else 1
     save_every = 1  # specify number of epochs to save model
     train_step = 0
     sum_loss = 0.0
+    avg_losses = []
     val_losses = []
     val_accuracies = []
+    loss_window = None
 
     net.to(device)
 
@@ -222,7 +233,7 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
             pred_cls, pred_reg = net(src)
             loss_cls = criterion_cls(pred_cls, tgt_cls)
             loss_reg = criterion_reg(pred_reg, tgt_reg)
-            loss = loss_cls + 3*loss_reg
+            loss = loss_cls + 3 * loss_reg
 
             sum_loss += loss.item()
             epoch_loss += loss.item()
@@ -233,8 +244,15 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
 
             if train_step % options.report_frequency == 0:
                 # TODO: with LeeModel, take average of the loss
+                avg_losses.append(np.mean(losses[-100:]))
                 print('Training loss at step {}: {:.5f}, average loss: {:.5f}, cls_loss: {:.5f}, reg_loss: {:.5f}'
-                      .format(train_step, loss.item(), np.mean(losses[-100:]), loss_cls.item(), loss_reg.item()))
+                      .format(train_step, loss.item(), avg_losses[-1], loss_cls.item(), loss_reg.item()))
+                if visualize:
+                    loss_window = vis.line(X=np.arange(0, train_step + 1, options.report_frequency),
+                                           Y=avg_losses,
+                                           update='update' if loss_window else None,
+                                           win=loss_window,
+                                           opts={'title': "Training loss", 'xlabel': "Step", 'ylabel': "Loss"})
 
             train_step += 1
 
@@ -273,6 +291,7 @@ def main():
     print('Numpy version: ', np.__version__)
     print('Torch version: ', torch.__version__)
     #######
+
     checkpoint = None
     options = parse_args()
 

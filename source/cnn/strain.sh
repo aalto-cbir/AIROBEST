@@ -25,6 +25,7 @@ python -u train.py  -src_path ../../data/hyperspectral_src_l2norm_channel_wise.p
                     -model ChenModel \
                     -save_dir Chen-model-311018 \
                     -report_frequency 50 \
+                    -visdom_server http://taito-gpu.csc.fi \
                     -gpu 0
 
 echo -e "\n ... printing job stats .... \n"
