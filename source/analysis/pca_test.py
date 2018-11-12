@@ -213,7 +213,9 @@ for v in forest_params:
     variable_idx[v] = idx
     idx += 1
 vidx = variable_idx[variable]
+percentage_mainspecies_idx = variable_idx['percentage_mainspecies']
 print('Variable', variable, 'maps to component index', vidx)
+print('percentage_mainspecies maps to component index', percentage_mainspecies_idx)
 
 print('Normalization', norm)
 print('Threshold', threshold)
@@ -259,7 +261,7 @@ if True:
                 v = formap[xy[1], xy[0]]
 
             ydata.append(v)
-            x = v[10]  # percentage_mainspecies
+            x = v[percentage_mainspecies_idx]  # percentage_mainspecies
             if variable != 'maintreespecies':
                 x = 100
             s = v[vidx]
