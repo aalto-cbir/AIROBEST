@@ -6,6 +6,7 @@
 import argparse
 import os
 import sys
+import time
 
 import pandas as pd
 import numpy as np
@@ -59,8 +60,8 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-hyper_data_path',
                         required=False, type=str,
-                        default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
-                        # default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
+                        # default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
+                        default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data')
     parser.add_argument('-forest_data_path',
                         required=False, type=str,
@@ -99,15 +100,20 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
     # all the pixels, only the first pixel is needed
     forest_rows, forest_cols, num_bands = forest_labels.shape
     rows, cols, _ = hyper_image.shape
-    hyper_labels = np.zeros((rows, cols, num_bands))
+    # hyper_labels = np.zeros((rows, cols, num_bands))
 
-    for row in range(rows):
-        for col in range(cols):
-            # get coordinate of (row, col) in forest map
-            c, r = hyp2for((col, row), hyper_gt, forest_gt)
-            # assert forest_cols >= c >= 0 and forest_rows >= r >= 0, \
-            #     "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
-            hyper_labels[row, col] = forest_labels[r, c]
+    # get corresponding coordinates of pixel at (0,0) in hyperspectral image
+    c0, r0 = hyp2for((0, 0), hyper_gt, forest_gt)
+    assert r0+rows <= forest_rows and c0+cols <= forest_cols, "Spatial locations do not match."
+    hyper_labels = forest_labels[r0:r0+rows, c0:c0+cols, :]
+
+    # for row in range(rows):
+    #     for col in range(cols):
+    #         # get coordinate of (row, col) in forest map
+    #         c, r = hyp2for((col, row), hyper_gt, forest_gt)
+    #         # assert forest_cols >= c >= 0 and forest_rows >= r >= 0, \
+    #         #     "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
+    #         hyper_labels[row, col] = forest_labels[r, c]
 
     return hyper_labels
 
@@ -206,7 +212,7 @@ def process_labels(labels):
     # TODO: get 'categorical_classes' from parameter
     # Current categorical classes: fertilityclass (0), soiltype (1), developmentclass (2), maintreespecies (9)
     categorical_classes = [0, 1, 2, 9]  # contains the indices of the categorical classes in forest data
-    useless_bands = [3]
+    useless_bands = [3]  # bands contain all 0 values
     transformed_data = None
     num_classes = 0
     metadata = {}
@@ -222,7 +228,7 @@ def process_labels(labels):
         one_hot = np.zeros((R, C, len(unique_values)), dtype=int)
         for row in range(R):
             for col in range(C):
-                idx = index_dict[band[row, col]]  # get the index of the value  band[row, col] in one-hot vector
+                idx = index_dict[band[row, col]]  # get the index of the value band[row, col] in one-hot vector
                 one_hot[row, col, idx] = 1
 
         if transformed_data is None:
@@ -254,6 +260,16 @@ def process_labels(labels):
     return labels, metadata
 
 
+def divide_into_shards(img_width, img_height, shard_width, shard_height):
+    shard_coords = []
+
+    width = 0
+    height = 0
+    while width <= img_width and height <= img_height:
+        continue
+    return shard_coords
+
+
 def main():
     print('Start processing data...')
     #######
@@ -272,7 +288,10 @@ def main():
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
     # Disable human data for now as there are only 19 Titta points in the map
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
+    print("Processing labels...")
+    start_time = time.clock()
     hyper_labels, metadata = process_labels(hyper_labels)
+    print("Done processing labels, took %s s" % (time.clock() - start_time))
 
     if not os.path.isdir('./data'):
         os.makedirs('./data')
@@ -280,22 +299,45 @@ def main():
     src_name = './data/%s_%s.pt' % (options.src_file_name, options.normalize_method)
     tgt_name = './data/%s.pt' % options.tgt_file_name
     metadata_name = './data/metadata.pt'
+    torch.save(metadata, metadata_name)
+    torch.save(torch.from_numpy(hyper_labels), tgt_name)
+    print('Target file has shape {}'.format(hyper_labels.shape))
+    del forest_data
+    del hyper_labels
+    del forest_labels
 
+    print("Normalizing input image...")
+    start_time = time.clock()
     # L2 normalization
     R, C, B = hyper_image.shape
     hyper_image = hyper_image.reshape(-1, B)  # flatten image
+    image_norm = np.zeros((R * C, B))
     if options.normalize_method == 'l2norm_along_channel':  # l2 normalize along *band* axis
-        hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=1)
+        # the following trick is used to avoid MemoryError when normalizing huge matrix
+        num_pixels = 2000000
+        size = len(hyper_image)
+        start = 0
+        while start < size:
+            chunk = hyper_image[start:min(start+num_pixels, size), :]
+            chunk = preprocessing.normalize(chunk, norm='l2', axis=1)
+            image_norm[start:min(start + num_pixels, size), :] = chunk
+            start += num_pixels
+            print('Processed %s pixels:' % start)
+        # hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=1)
     elif options.normalize_method == 'l2norm_channel_wise':  # l2 normalize separately for each channel
+        # TODO: handle memory issue for large hyperspectral image
         hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=0)
     # np.linalg.norm(hyper_image[0,:]) should be 1.0
-    hyper_image = hyper_image.reshape(R, C, B)  # reshape to original size
 
-    torch.save(metadata, metadata_name)
-    torch.save(torch.from_numpy(hyper_image), src_name)
-    torch.save(torch.from_numpy(hyper_labels), tgt_name)
+    del hyper_data
+    del hyper_image
+    # hyper_image = hyper_image.reshape(R, C, B)  # reshape to original size
+    image_norm = image_norm.reshape(R, C, B)  # reshape to original size
+    print("Done normalizing input image, took %s s" % (time.clock() - start_time))
+    torch.save(torch.from_numpy(image_norm), src_name)
+    # torch.save(torch.from_numpy(hyper_image), src_name)
 
-    print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
+    print('Source file has shape {}'.format(image_norm.shape))
     print('Processed files are stored under "./data" directory')
     print('End processing data...')
 
