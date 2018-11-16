@@ -7,6 +7,7 @@ import argparse
 import os
 import sys
 import time
+import math
 
 import pandas as pd
 import numpy as np
@@ -60,8 +61,8 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-hyper_data_path',
                         required=False, type=str,
-                        # default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
-                        default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
+                        default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
+                        # default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data')
     parser.add_argument('-forest_data_path',
                         required=False, type=str,
@@ -79,6 +80,18 @@ def parse_args():
                         required=False, type=str,
                         default='hyperspectral_tgt',
                         help='Save hyperspectral labels with this name')
+    parser.add_argument('-sharding_size_along_row',
+                        type=int,
+                        default=1,
+                        help='This is used for dividing original big image into smaller chunks. The number indicates '
+                             'how many chunks along vertical direction (along rows) should the original image '
+                             'broken into')
+    parser.add_argument('-sharding_size_along_col',
+                        type=int,
+                        default=1,
+                        help='This is used for dividing original big image into smaller chunks. The number indicates '
+                             'how many chunks along horizontal direction (along columns) should the original '
+                             'image broken into')
     parser.add_argument('-normalize_method',
                         type=str,
                         default='l2norm_along_channel', choices=['l2norm_along_channel', 'l2norm_channel_wise'],
@@ -260,14 +273,42 @@ def process_labels(labels):
     return labels, metadata
 
 
-def divide_into_shards(img_width, img_height, shard_width, shard_height):
-    shard_coords = []
+def shard_generator(hyper_img, hyper_labels, n_grid_row, n_grid_col):
+    img_rows, img_cols, _ = hyper_img.shape
+    n_rows_per_grid = math.ceil(img_rows / n_grid_row)
+    n_cols_per_grid = math.ceil(img_cols / n_grid_col)
+    start_row = 0
+    for i in range(n_grid_row):
+        start_col = 0
+        for j in range(n_grid_col):
+            end_row = min(img_rows, start_row + n_rows_per_grid)
+            end_col = min(img_cols, start_col + n_cols_per_grid)
+            src = hyper_img[start_row:end_row, start_col:end_col, :]
+            tgt = hyper_labels[start_row:end_row, start_col:end_col, :]
+            start_col += n_cols_per_grid
+            yield src, tgt
 
-    width = 0
-    height = 0
-    while width <= img_width and height <= img_height:
-        continue
-    return shard_coords
+        start_row += n_rows_per_grid
+
+
+def process_shard(shard_image, shard_labels, options, shard_id):
+    src_name = './data/%s_%s_%d.pt' % (options.src_file_name, options.normalize_method, shard_id)
+    tgt_name = './data/%s_%d.pt' % (options.tgt_file_name, shard_id)
+    R, C, B = shard_image.shape
+    shard_image = shard_image.reshape(-1, B)  # flatten image
+    if options.normalize_method == 'l2norm_along_channel':  # l2 normalize along *band* axis
+        shard_image = preprocessing.normalize(shard_image, norm='l2', axis=1)
+    elif options.normalize_method == 'l2norm_channel_wise':  # l2 normalize separately for each channel
+        shard_image = preprocessing.normalize(shard_image, norm='l2', axis=0)
+
+    shard_image = shard_image.reshape(R, C, B)  # reshape to original size
+    # torch.save(torch.from_numpy(shard_labels), tgt_name)
+    # torch.save(torch.from_numpy(shard_image), src_name)
+    torch.save(shard_labels, tgt_name)
+    torch.save(shard_image, src_name)
+
+    print('Target file {} has shape {}'.format(shard_id, shard_labels.shape))
+    print('Source file {} has shape {}'.format(shard_id, shard_image.shape))
 
 
 def main():
@@ -291,53 +332,29 @@ def main():
     print("Processing labels...")
     start_time = time.clock()
     hyper_labels, metadata = process_labels(hyper_labels)
+    # hyper_labels, metadata = hyper_labels, {}
     print("Done processing labels, took %s s" % (time.clock() - start_time))
 
     if not os.path.isdir('./data'):
         os.makedirs('./data')
 
-    src_name = './data/%s_%s.pt' % (options.src_file_name, options.normalize_method)
-    tgt_name = './data/%s.pt' % options.tgt_file_name
     metadata_name = './data/metadata.pt'
-    torch.save(metadata, metadata_name)
-    torch.save(torch.from_numpy(hyper_labels), tgt_name)
-    print('Target file has shape {}'.format(hyper_labels.shape))
-    del forest_data
-    del hyper_labels
-    del forest_labels
 
     print("Normalizing input image...")
     start_time = time.clock()
     # L2 normalization
-    R, C, B = hyper_image.shape
-    hyper_image = hyper_image.reshape(-1, B)  # flatten image
-    image_norm = np.zeros((R * C, B))
-    if options.normalize_method == 'l2norm_along_channel':  # l2 normalize along *band* axis
-        # the following trick is used to avoid MemoryError when normalizing huge matrix
-        num_pixels = 2000000
-        size = len(hyper_image)
-        start = 0
-        while start < size:
-            chunk = hyper_image[start:min(start+num_pixels, size), :]
-            chunk = preprocessing.normalize(chunk, norm='l2', axis=1)
-            image_norm[start:min(start + num_pixels, size), :] = chunk
-            start += num_pixels
-            print('Processed %s pixels:' % start)
-        # hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=1)
-    elif options.normalize_method == 'l2norm_channel_wise':  # l2 normalize separately for each channel
-        # TODO: handle memory issue for large hyperspectral image
-        hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=0)
-    # np.linalg.norm(hyper_image[0,:]) should be 1.0
+    metadata['num_shards'] = options.sharding_size_along_row * options.sharding_size_along_col
 
-    del hyper_data
-    del hyper_image
-    # hyper_image = hyper_image.reshape(R, C, B)  # reshape to original size
-    image_norm = image_norm.reshape(R, C, B)  # reshape to original size
+    torch.save(metadata, metadata_name)
+
+    shard_gen = shard_generator(hyper_image, hyper_labels,
+                                options.sharding_size_along_row,
+                                options.sharding_size_along_col)
+
+    for id, (shard_img, shard_labels) in enumerate(shard_gen):
+        process_shard(shard_img, shard_labels, options, id)
+
     print("Done normalizing input image, took %s s" % (time.clock() - start_time))
-    torch.save(torch.from_numpy(image_norm), src_name)
-    # torch.save(torch.from_numpy(hyper_image), src_name)
-
-    print('Source file has shape {}'.format(image_norm.shape))
     print('Processed files are stored under "./data" directory')
     print('End processing data...')
 
