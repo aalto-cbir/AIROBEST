@@ -255,6 +255,17 @@ def train(net, optimizer, criterion_cls, criterion_reg, device, metadata,
             shard_loss = 0.0
             train_loader, val_loader = build_loader(metadata, options, id)
 
+            if e == 0 and id == 0:
+                with torch.no_grad():
+                    print('Model summary: ')
+                    for input, _, _ in train_loader:
+                        break
+
+                    summary(net,
+                            input.shape[1:],
+                            batch_size=options.batch_size,
+                            device=device.type)
+
             for idx, (src, tgt_cls, tgt_reg) in enumerate(train_loader):
                 src = src.to(device, dtype=torch.float32)
                 tgt_cls = tgt_cls.to(device, dtype=torch.float32)
@@ -350,26 +361,24 @@ def main():
 
     metadata = get_input_data(options.metadata)
     out_cls = metadata['num_classes']
+    out_reg = metadata['num_regression']
     assert out_cls > 0, 'Number of classes has to be > 0'
 
-    hyper_image = torch.load(options.src_path)
-    hyper_labels = torch.load(options.tgt_path)
-    hyper_labels_cls = hyper_labels[:, :, :out_cls]
-    hyper_labels_reg = hyper_labels[:, :, (out_cls + 1):]
-
-    out_reg = hyper_labels_reg.shape[2]
+    # hyper_image = torch.load(options.src_path)
+    # hyper_labels = torch.load(options.tgt_path)
+    # hyper_labels_cls = hyper_labels[:, :, :out_cls]
+    # hyper_labels_reg = hyper_labels[:, :, (out_cls + 1):]
+    #
+    # out_reg = hyper_labels_reg.shape[2]
     # maybe only copy to gpu during computation?
     # hyper_image.to(device)
     # hyper_labels.to(device)
     # hyper_labels_cls.to(device, dtype=torch.float32)
     # hyper_labels_reg.to(device, dtype=torch.float32)
 
-    R, C, B = hyper_image.shape
-
-    train_set, test_set, val_set = split_data(R, C, options.patch_size, options.patch_step)
-
     # Model construction
-    W, H, num_bands = hyper_image.shape
+    # W, H, num_bands = hyper_image.shape
+    W, H, num_bands = metadata['image_shape']
 
     model_name = options.model
 
@@ -386,24 +395,24 @@ def main():
     # loss = nn.CrossEntropyLoss()
     # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
 
-    train_loader = get_loader(hyper_image,
-                              hyper_labels_cls,
-                              hyper_labels_reg,
-                              train_set,
-                              options.batch_size,
-                              model_name=model_name,
-                              is_3d_convolution=True,
-                              patch_size=options.patch_size,
-                              shuffle=True)
-    val_loader = get_loader(hyper_image,
-                            hyper_labels_cls,
-                            hyper_labels_reg,
-                            val_set,
-                            options.batch_size,
-                            model_name=model_name,
-                            is_3d_convolution=True,
-                            patch_size=options.patch_size,
-                            shuffle=True)
+    # train_loader = get_loader(hyper_image,
+    #                           hyper_labels_cls,
+    #                           hyper_labels_reg,
+    #                           train_set,
+    #                           options.batch_size,
+    #                           model_name=model_name,
+    #                           is_3d_convolution=True,
+    #                           patch_size=options.patch_size,
+    #                           shuffle=True)
+    # val_loader = get_loader(hyper_image,
+    #                         hyper_labels_cls,
+    #                         hyper_labels_reg,
+    #                         val_set,
+    #                         options.batch_size,
+    #                         model_name=model_name,
+    #                         is_3d_convolution=True,
+    #                         patch_size=options.patch_size,
+    #                         shuffle=True)
 
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
     model = model.to(device)
@@ -416,15 +425,15 @@ def main():
         optimizer.load_state_dict(checkpoint['optimizer'])
         setattr(options, 'start_epoch', checkpoint['epoch'])
 
-    with torch.no_grad():
-        print('Model summary: ')
-        for input, _, _ in train_loader:
-            break
-
-        summary(model,
-                input.shape[1:],
-                batch_size=options.batch_size,
-                device=device.type)
+    # with torch.no_grad():
+    #     print('Model summary: ')
+    #     for input, _, _ in train_loader:
+    #         break
+    #
+    #     summary(model,
+    #             input.shape[1:],
+    #             batch_size=options.batch_size,
+    #             device=device.type)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     print(model)

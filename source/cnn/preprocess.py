@@ -80,6 +80,10 @@ def parse_args():
                         required=False, type=str,
                         default='hyperspectral_tgt',
                         help='Save hyperspectral labels with this name')
+    parser.add_argument('-metadata_file_name',
+                        required=False, type=str,
+                        default='metadata',
+                        help='Save metadata of the processed data with this name')
     parser.add_argument('-sharding_size_along_row',
                         type=int,
                         default=1,
@@ -265,11 +269,13 @@ def process_labels(labels):
             labels[:, :, i].fill(0.0)
             print('Band with index %d has all zero values, consider removing it!' % i)
 
+    _, _, num_regressions = labels.shape
     # concatenate with newly transformed data
     labels = np.concatenate((transformed_data, labels), axis=2)
 
     metadata['categorical'] = categorical
     metadata['num_classes'] = num_classes
+    metadata['num_regressions'] = num_regressions
     return labels, metadata
 
 
@@ -302,10 +308,8 @@ def process_shard(shard_image, shard_labels, options, shard_id):
         shard_image = preprocessing.normalize(shard_image, norm='l2', axis=0)
 
     shard_image = shard_image.reshape(R, C, B)  # reshape to original size
-    # torch.save(torch.from_numpy(shard_labels), tgt_name)
-    # torch.save(torch.from_numpy(shard_image), src_name)
-    torch.save(shard_labels, tgt_name)
-    torch.save(shard_image, src_name)
+    torch.save(torch.from_numpy(shard_labels), tgt_name)
+    torch.save(torch.from_numpy(shard_image), src_name)
 
     print('Target file {} has shape {}'.format(shard_id, shard_labels.shape))
     print('Source file {} has shape {}'.format(shard_id, shard_image.shape))
@@ -338,12 +342,13 @@ def main():
     if not os.path.isdir('./data'):
         os.makedirs('./data')
 
-    metadata_name = './data/metadata.pt'
+    metadata_name = './data/%s.pt' % options.metadata_file_name
 
     print("Normalizing input image...")
     start_time = time.clock()
     # L2 normalization
     metadata['num_shards'] = options.sharding_size_along_row * options.sharding_size_along_col
+    metadata['image_shape'] = hyper_image.shape
 
     torch.save(metadata, metadata_name)
 

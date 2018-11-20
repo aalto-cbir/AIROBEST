@@ -18,8 +18,8 @@ module list
 
 #env
 
-python -u train.py  -src_path data/hyperspectral_src_subA_l2norm_along_channel \
-                    -tgt_path data/hyperspectral_tgt_subA \
+python -u train.py  -src_path data/hyperspectral_src_subA_sm_l2norm_along_channel \
+                    -tgt_path data/hyperspectral_tgt_subA_sm \
                     -metadata data/metadata_subA.pt \
                     -patch_size 35 \
                     -patch_step 5 \
@@ -27,7 +27,7 @@ python -u train.py  -src_path data/hyperspectral_src_subA_l2norm_along_channel \
                     -batch_size 64 \
                     -epoch 50 \
                     -model ChenModel \
-                    -save_dir Chen-1511018-test1 \
+                    -save_dir Chen-1711018-test1 \
                     -report_frequency 5 \
                     -visdom_server http://taito-gpu.csc.fi \
                     -gpu 0

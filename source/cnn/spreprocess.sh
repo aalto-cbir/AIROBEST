@@ -19,13 +19,14 @@ module load python-env/intelpython3.6-2018.3 gcc/5.4.0
 module list
 
 
-srun python -u preprocess.py    -src_file_name hyperspectral_src_subA \
-                                -tgt_file_name hyperspectral_tgt_subA \
+srun python -u preprocess.py    -src_file_name hyperspectral_src_subA_sm \
+                                -tgt_file_name hyperspectral_tgt_subA_sm \
+                                -metadata_file_name metadata_subA_sm \
                                 -normalize_method l2norm_along_channel \
                                 -hyper_data_path /proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr \
                                 -forest_data_path /proj/deepsat/hyperspectral/forestdata.hdr \
-                                -sharding_size_along_row 2 \
-                                -sharding_size_along_col 2
+                                -sharding_size_along_row 5 \
+                                -sharding_size_along_col 5
 
 echo -e "\n ... printing job stats .... \n"
 used_slurm_resources.bash
