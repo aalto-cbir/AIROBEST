@@ -288,7 +288,7 @@ def train(net, optimizer, criterion_cls, criterion_reg, device, metadata,
                 if train_step % options.report_frequency == 0:
                     # TODO: with LeeModel, take average of the loss
                     avg_losses.append(np.mean(losses[-100:]))
-                    print('Training loss at step {}: {:.5f}, average loss: {:.5f}, cls_loss: {:.5f}, reg_loss: {:.5f}'
+                    print('Training loss at step {}: {:.8f}, average loss: {:.8f}, cls_loss: {:.8f}, reg_loss: {:.8f}'
                           .format(train_step, loss.item(), avg_losses[-1], loss_cls.item(), loss_reg.item()))
                     if visualize is not None:
                         loss_window = visualize.line(X=np.arange(0, train_step + 1, options.report_frequency),
@@ -364,20 +364,6 @@ def main():
     out_reg = metadata['num_regression']
     assert out_cls > 0, 'Number of classes has to be > 0'
 
-    # hyper_image = torch.load(options.src_path)
-    # hyper_labels = torch.load(options.tgt_path)
-    # hyper_labels_cls = hyper_labels[:, :, :out_cls]
-    # hyper_labels_reg = hyper_labels[:, :, (out_cls + 1):]
-    #
-    # out_reg = hyper_labels_reg.shape[2]
-    # maybe only copy to gpu during computation?
-    # hyper_image.to(device)
-    # hyper_labels.to(device)
-    # hyper_labels_cls.to(device, dtype=torch.float32)
-    # hyper_labels_reg.to(device, dtype=torch.float32)
-
-    # Model construction
-    # W, H, num_bands = hyper_image.shape
     W, H, num_bands = metadata['image_shape']
 
     model_name = options.model
@@ -391,28 +377,7 @@ def main():
         loss_cls = nn.BCELoss()
         loss_reg = nn.MSELoss()
 
-    # loss = nn.BCEWithLogitsLoss()
-    # loss = nn.CrossEntropyLoss()
     # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
-
-    # train_loader = get_loader(hyper_image,
-    #                           hyper_labels_cls,
-    #                           hyper_labels_reg,
-    #                           train_set,
-    #                           options.batch_size,
-    #                           model_name=model_name,
-    #                           is_3d_convolution=True,
-    #                           patch_size=options.patch_size,
-    #                           shuffle=True)
-    # val_loader = get_loader(hyper_image,
-    #                         hyper_labels_cls,
-    #                         hyper_labels_reg,
-    #                         val_set,
-    #                         options.batch_size,
-    #                         model_name=model_name,
-    #                         is_3d_convolution=True,
-    #                         patch_size=options.patch_size,
-    #                         shuffle=True)
 
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
     model = model.to(device)
@@ -424,16 +389,6 @@ def main():
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         setattr(options, 'start_epoch', checkpoint['epoch'])
-
-    # with torch.no_grad():
-    #     print('Model summary: ')
-    #     for input, _, _ in train_loader:
-    #         break
-    #
-    #     summary(model,
-    #             input.shape[1:],
-    #             batch_size=options.batch_size,
-    #             device=device.type)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     print(model)
