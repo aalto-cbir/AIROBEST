@@ -319,9 +319,9 @@ def main():
 
     hyper_image = torch.load(options.src_path)
     hyper_labels = torch.load(options.tgt_path)
-    # TODO: only need labels for classification task for now
+
     hyper_labels_cls = hyper_labels[:, :, :out_cls]
-    hyper_labels_reg = hyper_labels[:, :, (out_cls + 1):]
+    hyper_labels_reg = hyper_labels[:, :, out_cls:]
 
     out_reg = hyper_labels_reg.shape[2]
     # maybe only copy to gpu during computation?

@@ -15,8 +15,9 @@ module load python-env/intelpython3.6-2018.3 gcc/5.4.0
 module list
 
 
-srun python -u preprocess.py    -src_file_name hyperspectral_src_l2norm_channel_wise \
-                                -tgt_file_name hyperspectral_tgt \
+srun python -u preprocess.py    -src_file_name hyperspectral_src_subA \
+                                -tgt_file_name hyperspectral_tgt_subA \
+                                -metadata_file_name metadata_subA \
                                 -normalize_method l2norm_along_channel \
                                 -forest_data_path /proj/deepsat/hyperspectral/forestdata.hdr
 

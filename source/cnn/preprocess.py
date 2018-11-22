@@ -11,7 +11,6 @@ import pandas as pd
 import numpy as np
 import spectral
 import torch
-from sklearn import preprocessing
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
@@ -78,6 +77,10 @@ def parse_args():
                         required=False, type=str,
                         default='hyperspectral_tgt',
                         help='Save hyperspectral labels with this name')
+    parser.add_argument('-metadata_file_name',
+                        required=False, type=str,
+                        default='metadata',
+                        help='Save metadata of the processed data with this name')
     parser.add_argument('-normalize_method',
                         type=str,
                         default='l2norm_along_channel', choices=['l2norm_along_channel', 'l2norm_channel_wise'],
@@ -279,21 +282,18 @@ def main():
 
     src_name = './data/%s_%s.pt' % (options.src_file_name, options.normalize_method)
     tgt_name = './data/%s.pt' % options.tgt_file_name
-    metadata_name = './data/metadata.pt'
-
-    # L2 normalization
-    R, C, B = hyper_image.shape
-    hyper_image = hyper_image.reshape(-1, B)  # flatten image
-    if options.normalize_method == 'l2norm_along_channel':  # l2 normalize along *band* axis
-        hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=1)
-    elif options.normalize_method == 'l2norm_channel_wise':  # l2 normalize separately for each channel
-        hyper_image = preprocessing.normalize(hyper_image, norm='l2', axis=0)
-    # np.linalg.norm(hyper_image[0,:]) should be 1.0
-    hyper_image = hyper_image.reshape(R, C, B)  # reshape to original size
+    metadata_name = './data/%s.pt' % options.metadata_file_name
 
     torch.save(metadata, metadata_name)
-    torch.save(torch.from_numpy(hyper_image), src_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
+
+    # storing L2 norm of the image based on normalization method
+    if options.normalize_method == 'l2norm_along_channel':  # l2 norm along *band* axis
+        norm = np.linalg.norm(hyper_image, axis=2)
+    elif options.normalize_method == 'l2norm_channel_wise':  # l2 norm separately for each channel
+        norm = np.linalg.norm(hyper_image, axis=(0, 1))
+
+    torch.save(torch.from_numpy(norm), src_name)
 
     print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
     print('Processed files are stored under "./data" directory')
