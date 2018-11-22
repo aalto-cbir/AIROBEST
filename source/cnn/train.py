@@ -183,6 +183,8 @@ def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
     return average_loss, accuracy
 
 
+
+
 def build_loader(metadata, options, shard_id):
     out_cls = metadata['num_classes']
     assert out_cls > 0, 'Number of classes has to be > 0'
@@ -190,7 +192,7 @@ def build_loader(metadata, options, shard_id):
     hyper_image = torch.load("%s_%d.pt" % (options.src_path, shard_id))
     hyper_labels = torch.load("%s_%d.pt" % (options.tgt_path, shard_id))
     hyper_labels_cls = hyper_labels[:, :, :out_cls]
-    hyper_labels_reg = hyper_labels[:, :, (out_cls + 1):]
+    hyper_labels_reg = hyper_labels[:, :, out_cls:]
 
     R, C, B = hyper_image.shape
     train_set, test_set, val_set = split_data(R, C, options.patch_size, shard_id, options.patch_step)
@@ -301,11 +303,11 @@ def train(net, optimizer, criterion_cls, criterion_reg, device, metadata,
                 train_step += 1
 
             shard_loss = shard_loss / len(train_loader)
-            print('Average epoch loss: {:.5f}'.format(shard_loss))
+            print('Average loss of shard {}: {:.5f}'.format(id, shard_loss))
             metric = shard_loss
             if val_loader is not None:
                 val_loss, val_accuracy = validate(net, criterion_cls, criterion_reg, val_loader, device, metadata)
-                print('Validation loss: {:.5f}, validation accuracy: {:.2f}%'.format(val_loss, val_accuracy))
+                print('Validation loss: {:.8f}, validation accuracy: {:.8f}%'.format(val_loss, val_accuracy))
                 val_losses.append(val_loss)
                 val_accuracies.append(val_accuracy)
                 metric = val_loss
@@ -361,7 +363,7 @@ def main():
 
     metadata = get_input_data(options.metadata)
     out_cls = metadata['num_classes']
-    out_reg = metadata['num_regression']
+    out_reg = metadata['num_regressions']
     assert out_cls > 0, 'Number of classes has to be > 0'
 
     W, H, num_bands = metadata['image_shape']
