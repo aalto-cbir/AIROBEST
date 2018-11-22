@@ -31,7 +31,7 @@ def get_patch(tensor, row, col, patch_size):
     return tensor[row1:(row2 + 1), col1:(col2 + 1)]
 
 
-def split_data(rows, cols, norm_matrix, patch_size, step=1):
+def split_data(rows, cols, norm_inv, patch_size, step=1):
     """
     Split dataset into train, test, val sets based on the coordinates
     of each pixel in the hyperspectral image
@@ -48,7 +48,7 @@ def split_data(rows, cols, norm_matrix, patch_size, step=1):
     val_row_end = val_row_start + round(rows / 5)
     for i in range(patch_size // 2, rows - patch_size // 2, step):
         for j in range(patch_size // 2, cols - patch_size // 2, step):
-            patch = get_patch(norm_matrix, i, j, patch_size)
+            patch = get_patch(norm_inv, i, j, patch_size)
             if np.min(patch) > 0:  # make sure there is no white pixels in the patch
                 if i <= val_row_start - patch_size // 2 or val_row_end + patch_size // 2 <= i:
                     train.append((i, j))

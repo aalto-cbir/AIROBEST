@@ -10,7 +10,7 @@ class HypDataset(data.Dataset):
     - {train/test/val}.npy: contain pixel coordinates for each train/test/val set
     """
 
-    def __init__(self, hyper_image, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name, is_3d_convolution=False):
+    def __init__(self, hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name, is_3d_convolution=False):
         """
 
         :param hyper_image: hyperspectral image with shape WxHxC (C: number of channels)
@@ -20,6 +20,7 @@ class HypDataset(data.Dataset):
         :param hyperparams:
         """
         self.hyper_image = hyper_image
+        self.norm_inv = norm_inv
         self.hyper_labels_cls = hyper_labels_cls
         self.hyper_labels_reg = hyper_labels_reg
         self.patch_size = patch_size
@@ -41,6 +42,8 @@ class HypDataset(data.Dataset):
         row, col = self.coords[idx]
 
         src = get_patch(self.hyper_image, row, col, self.patch_size)
+        src_norm_inv = get_patch(self.norm_inv, row, col, self.patch_size)
+        src = src * src_norm_inv
         if self.model_name == 'LeeModel':
             tgt_cls = get_patch(self.hyper_labels_cls, row, col, self.patch_size)
             tgt_cls = tgt_cls.permute(2, 0, 1)
@@ -62,9 +65,9 @@ class HypDataset(data.Dataset):
         return len(self.coords)
 
 
-def get_loader(hyper_image, hyper_labels_cls, hyper_labels_reg, coords, batch_size, patch_size=11, model_name='ChenModel',
+def get_loader(hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, batch_size, patch_size=11, model_name='ChenModel',
                shuffle=False, num_workers=0, is_3d_convolution=False):
-    dataset = HypDataset(hyper_image, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name=model_name, is_3d_convolution=is_3d_convolution)
+    dataset = HypDataset(hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name=model_name, is_3d_convolution=is_3d_convolution)
 
     data_loader = data.DataLoader(dataset=dataset,
                                   batch_size=batch_size,

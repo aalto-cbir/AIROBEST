@@ -325,7 +325,7 @@ def main():
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_image = hyper_data.open_memmap()
     hyper_labels = torch.load(options.tgt_path)
-    norm_matrix = torch.load(options.src_path)
+    norm_inv = torch.load(options.src_path)
 
     hyper_labels_cls = hyper_labels[:, :, :out_cls]
     hyper_labels_reg = hyper_labels[:, :, out_cls:]
@@ -334,7 +334,7 @@ def main():
 
     R, C, num_bands = hyper_image.shape
 
-    train_set, val_set = split_data(R, C, norm_matrix, options.patch_size, options.patch_step)
+    train_set, val_set = split_data(R, C, norm_inv, options.patch_size, options.patch_step)
 
     # Model construction
     model_name = options.model
@@ -353,6 +353,7 @@ def main():
     # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
 
     train_loader = get_loader(hyper_image,
+                              norm_inv,
                               hyper_labels_cls,
                               hyper_labels_reg,
                               train_set,
@@ -362,6 +363,7 @@ def main():
                               patch_size=options.patch_size,
                               shuffle=True)
     val_loader = get_loader(hyper_image,
+                            norm_inv,
                             hyper_labels_cls,
                             hyper_labels_reg,
                             val_set,
