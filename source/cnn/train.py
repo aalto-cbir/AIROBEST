@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn as nn
+import spectral
 from torchsummary import summary
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import visdom
@@ -25,6 +26,10 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Training options for hyperspectral data',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-hyper_data_path',
+                        required=False, type=str,
+                        default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
+                        help='Path to hyperspectral data')
     parser.add_argument('-src_path',
                         required=False, type=str,
                         default='../../data/hyperspectral_src_l2norm.pt',
@@ -317,26 +322,21 @@ def main():
     out_cls = metadata['num_classes']
     assert out_cls > 0, 'Number of classes has to be > 0'
 
-    hyper_image = torch.load(options.src_path)
+    hyper_data = spectral.open_image(options.hyper_data_path)
+    hyper_image = hyper_data.open_memmap()
     hyper_labels = torch.load(options.tgt_path)
+    norm_matrix = torch.load(options.src_path)
 
     hyper_labels_cls = hyper_labels[:, :, :out_cls]
     hyper_labels_reg = hyper_labels[:, :, out_cls:]
 
     out_reg = hyper_labels_reg.shape[2]
-    # maybe only copy to gpu during computation?
-    hyper_image.to(device)
-    # hyper_labels.to(device)
-    hyper_labels_cls.to(device, dtype=torch.float32)
-    hyper_labels_reg.to(device, dtype=torch.float32)
 
-    R, C, B = hyper_image.shape
+    R, C, num_bands = hyper_image.shape
 
-    train_set, test_set, val_set = split_data(R, C, options.patch_size, options.patch_step)
+    train_set, val_set = split_data(R, C, norm_matrix, options.patch_size, options.patch_step)
 
     # Model construction
-    W, H, num_bands = hyper_image.shape
-
     model_name = options.model
 
     if model_name == 'ChenModel':

@@ -1,4 +1,5 @@
 import torch.utils.data as data
+from input.utils import get_patch
 
 
 class HypDataset(data.Dataset):
@@ -38,17 +39,12 @@ class HypDataset(data.Dataset):
 
     def __getitem__(self, idx):
         row, col = self.coords[idx]
-        row1, col1 = row - self.patch_size // 2, col - self.patch_size // 2
-        row2, col2 = row + self.patch_size // 2, col + self.patch_size // 2
 
-        assert row1 >= 0 and col1 >= 0 and row2 <= self.hyper_row and col2 <= self.hyper_col, \
-            'Coordinate is invalid: %s %s ' % (row, col)
-
-        src = self.hyper_image[row1:(row2+1), col1:(col2+1)]
+        src = get_patch(self.hyper_image, row, col, self.patch_size)
         if self.model_name == 'LeeModel':
-            tgt_cls = self.hyper_labels_cls[row1:(row2 + 1), col1:(col2 + 1)]
+            tgt_cls = get_patch(self.hyper_labels_cls, row, col, self.patch_size)
             tgt_cls = tgt_cls.permute(2, 0, 1)
-            tgt_reg = self.hyper_labels_reg[row1:(row2 + 1), col1:(col2 + 1)]
+            tgt_reg = get_patch(self.hyper_labels_reg, row, col, self.patch_size)
             tgt_reg = tgt_reg.permute(2, 0, 1)
         else:
             tgt_cls = self.hyper_labels_cls[row, col]  # use labels of center pixel

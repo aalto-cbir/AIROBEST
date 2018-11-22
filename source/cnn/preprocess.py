@@ -293,6 +293,7 @@ def main():
     elif options.normalize_method == 'l2norm_channel_wise':  # l2 norm separately for each channel
         norm = np.linalg.norm(hyper_image, axis=(0, 1))
 
+    norm[norm > 0] = 1.0 / norm[norm > 0]  # invert positive values
     torch.save(torch.from_numpy(norm), src_name)
 
     print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
