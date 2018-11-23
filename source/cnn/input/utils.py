@@ -32,14 +32,14 @@ def get_patch(tensor, row, col, patch_size):
     return tensor[row1:(row2 + 1), col1:(col2 + 1)]
 
 
-def split_data(rows, cols, norm_inv, patch_size, step=1):
+def split_data(rows, cols, norm_inv, patch_size, stride=1):
     """
     Split dataset into train, test, val sets based on the coordinates
     of each pixel in the hyperspectral image
     :param rows: number of rows in hyperspectral image
     :param cols: number of columns in hyperspectral image
     :param patch_size: patch_size for a training image patch, expected to be an odd number
-    :param step: amount of pixels to skip while looping through the hyperspectral image
+    :param stride: amount of pixels to skip while looping through the hyperspectral image
     :return: train, test, val lists with the pixel positions
     """
     train = []
@@ -47,8 +47,8 @@ def split_data(rows, cols, norm_inv, patch_size, step=1):
     # reserve 20% in the middle part of the hyperspectral image for validation
     val_row_start = round(rows * 2 / 5)
     val_row_end = val_row_start + round(rows / 5)
-    for i in range(patch_size // 2, rows - patch_size // 2, step):
-        for j in range(patch_size // 2, cols - patch_size // 2, step):
+    for i in range(patch_size // 2, rows - patch_size // 2, stride):
+        for j in range(patch_size // 2, cols - patch_size // 2, stride):
             patch = get_patch(norm_inv, i, j, patch_size)
             if torch.min(patch) > 0:  # make sure there is no white pixels in the patch
                 if i <= val_row_start - patch_size // 2 or val_row_end + patch_size // 2 <= i:

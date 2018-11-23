@@ -53,7 +53,7 @@ def parse_args():
     train.add_argument('-patch_size', type=int,
                        default=27,
                        help="Size of the spatial neighbourhood, default is 11")
-    train.add_argument('-patch_step', type=int,
+    train.add_argument('-patch_stride', type=int,
                        default=1,
                        help="Number of pixels to skip for each image patch while sliding over the training image")
     train.add_argument('-lr', type=float,
@@ -302,9 +302,12 @@ def main():
 
     if options.train_from:
         print('Loading checkpoint from %s' % options.train_from)
-        print('Overwrite options with values from checkpoint!!!')
+        print('Overwrite some options with values from checkpoint!!!')
         checkpoint = torch.load(options.train_from)
-        options = checkpoint['options']
+        ckpt_options = checkpoint['options']
+        options.patch_size = ckpt_options.patch_size
+        options.patch_stride = ckpt_options.patch_stride
+        options.model = ckpt_options.model
 
     # TODO: check for minimum patch_size
     print('Training options: {}'.format(options))
@@ -334,7 +337,7 @@ def main():
 
     R, C, num_bands = hyper_image.shape
 
-    train_set, val_set = split_data(R, C, norm_inv, options.patch_size, options.patch_step)
+    train_set, val_set = split_data(R, C, norm_inv, options.patch_size, options.patch_stride)
 
     # Model construction
     model_name = options.model
