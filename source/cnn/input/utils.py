@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.model_selection import train_test_split
+import torch
 
 
 def in_hypmap(W, H, x, y, patch_size):
@@ -49,7 +50,7 @@ def split_data(rows, cols, norm_inv, patch_size, step=1):
     for i in range(patch_size // 2, rows - patch_size // 2, step):
         for j in range(patch_size // 2, cols - patch_size // 2, step):
             patch = get_patch(norm_inv, i, j, patch_size)
-            if np.min(patch) > 0:  # make sure there is no white pixels in the patch
+            if torch.min(patch) > 0:  # make sure there is no white pixels in the patch
                 if i <= val_row_start - patch_size // 2 or val_row_end + patch_size // 2 <= i:
                     train.append((i, j))
                 elif val_row_start + patch_size // 2 <= i <= val_row_end - patch_size // 2:

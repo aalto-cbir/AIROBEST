@@ -1,3 +1,4 @@
+import torch
 import torch.utils.data as data
 from input.utils import get_patch
 
@@ -43,6 +44,7 @@ class HypDataset(data.Dataset):
 
         src = get_patch(self.hyper_image, row, col, self.patch_size)
         src_norm_inv = get_patch(self.norm_inv, row, col, self.patch_size)
+        src_norm_inv = torch.unsqueeze(src_norm_inv, -1)
         src = src * src_norm_inv
         if self.model_name == 'LeeModel':
             tgt_cls = get_patch(self.hyper_labels_cls, row, col, self.patch_size)

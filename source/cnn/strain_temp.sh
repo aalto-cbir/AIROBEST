@@ -18,9 +18,9 @@ module list
 
 #env
 
-python -u train.py  -src_path ../../data/hyperspectral_src_sm_l2norm2.pt \
-                    -tgt_path ../../data/hyperspectral_tgt_sm.pt \
-                    -metadata ../../data/metadata.pt \
+python -u train.py  -src_path ./data/hyperspectral_src_subA_l2norm_along_channel.pt \
+                    -tgt_path ./data/hyperspectral_tgt_subA.pt \
+                    -metadata ./data/metadata_subA.pt \
                     -patch_size 35 \
                     -patch_step 3 \
                     -lr 0.001 \
