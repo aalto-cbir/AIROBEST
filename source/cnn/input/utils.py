@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.model_selection import train_test_split
 import torch
+import matplotlib.pyplot as plt
 
 
 def in_hypmap(W, H, x, y, patch_size):
@@ -59,5 +60,22 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1):
     # train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
     # train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
 
+    np.random.seed(123)
+    np.random.shuffle(train)
+    np.random.seed(123)
+    np.random.shuffle(val)
+
     print('Number of training pixels: %d, val pixels: %d' % (len(train), len(val)))
     return train, val
+
+
+def visualize_label(hyper_labels):
+    _, _, B = hyper_labels.shape
+    flatten_labels = hyper_labels.reshape(-1, B)
+    for i in range(B):
+        y_values = flatten_labels[:, i]
+        plt.bar(len(flatten_labels), y_values)
+
+    plt.savefig('./data/labels-bar.jpg')
+    # TODO: pie charts for classes
+    plt.show()

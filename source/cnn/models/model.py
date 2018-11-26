@@ -69,7 +69,7 @@ class ChenModel(nn.Module):
 
         # for regression task
         x_reg = F.relu(self.fc_reg1(x))
-        x_reg = self.fc_reg2(x_reg)  # Do not use Relu at final FC layer because of Relu is not differentiable
+        x_reg = F.sigmoid(self.fc_reg2(x_reg))  # Don't use Relu at final FC layer <~ Relu is not differentiable
 
         return x_cls, x_reg
 

@@ -30,10 +30,10 @@ def parse_args():
                         required=False, type=str,
                         default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
                         help='Path to hyperspectral data')
-    parser.add_argument('-src_path',
+    parser.add_argument('-src_norm_multiplier',
                         required=False, type=str,
                         default='../../data/hyperspectral_src_l2norm.pt',
-                        help='Path to training input file')
+                        help='Path to file containing inverted norm (along color channel) of the source image')
     parser.add_argument('-tgt_path',
                         required=False, type=str,
                         default='../../data/hyperspectral_tgt.pt',
@@ -165,7 +165,6 @@ def compute_accuracy(predict, tgt, metadata):
 def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
     sum_loss = 0
     N_samples = 0
-    n_correct = 0
     sum_accuracy = 0
     for idx, (src, tgt_cls, tgt_reg) in enumerate(val_loader):
         src = src.to(device, dtype=torch.float32)
@@ -180,7 +179,6 @@ def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
             loss = loss_cls + 3 * loss_reg
 
             sum_loss += loss.item()
-            # n_correct += compute_accuracy(predict, tgt, metadata)
             sum_accuracy += compute_accuracy(pred_cls, tgt_cls, metadata)
 
     # return average validation loss
@@ -328,7 +326,7 @@ def main():
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_image = hyper_data.open_memmap()
     hyper_labels = torch.load(options.tgt_path)
-    norm_inv = torch.load(options.src_path)
+    norm_inv = torch.load(options.src_norm_multiplier)
 
     hyper_labels_cls = hyper_labels[:, :, :out_cls]
     hyper_labels_reg = hyper_labels[:, :, out_cls:]
