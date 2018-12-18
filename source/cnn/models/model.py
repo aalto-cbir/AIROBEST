@@ -16,6 +16,7 @@ class ChenModel(nn.Module):
         # In the beginning, the weights are randomly initialized
         # with standard deviation 0.001
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
+            # init.normal_(m.weight, std=0.01)
             init.xavier_normal_(m.weight)
             init.constant_(m.bias, 0)  # for 0.4.0 compatibility
 
@@ -27,16 +28,19 @@ class ChenModel(nn.Module):
 
         self.conv1 = nn.Conv3d(1, n_planes, (32, 4, 4))
         self.pool1 = nn.MaxPool3d((1, 2, 2))
-        self.conv2 = nn.Conv3d(n_planes, n_planes, (32, 4, 4))
+        self.conv2 = nn.Conv3d(n_planes, n_planes, (32, 5, 5))
         self.pool2 = nn.MaxPool3d((1, 2, 2))
         self.conv3 = nn.Conv3d(n_planes, n_planes, (32, 4, 4))
 
         self.features_size = self._get_final_flattened_size()
+        print("Feature size:", self.features_size)
 
         self.fc_cls1 = nn.Linear(self.features_size, 200)
         self.fc_cls2 = nn.Linear(200, out_cls)
         self.fc_reg1 = nn.Linear(self.features_size, 200)
         self.fc_reg2 = nn.Linear(200, out_reg)
+        # self.fc_cls = nn.Linear(self.features_size, out_cls)
+        # self.fc_reg = nn.Linear(self.features_size, out_reg)
 
         self.dropout = nn.Dropout(p=0.3)
 
@@ -66,10 +70,13 @@ class ChenModel(nn.Module):
         # for classification task
         x_cls = F.relu(self.fc_cls1(x))
         x_cls = F.sigmoid(self.fc_cls2(x_cls))
+        # x_cls = F.sigmoid(self.fc_cls(x))
 
         # for regression task
         x_reg = F.relu(self.fc_reg1(x))
-        x_reg = F.sigmoid(self.fc_reg2(x_reg))  # Don't use Relu at final FC layer <~ Relu is not differentiable
+        # x_reg = F.sigmoid(self.fc_reg2(x_reg))  # Don't use Relu at final FC layer <~ Relu is not differentiable
+        x_reg = self.fc_reg2(x_reg)
+        # x_reg = self.fc_reg(x)
 
         return x_cls, x_reg
 
@@ -80,6 +87,7 @@ class LeeModel(nn.Module):
     Hyungtae Lee and Heesung Kwon (2016)
     https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7729859
     https://www.researchgate.net/publication/301876505_Contextual_Deep_CNN_Based_Hyperspectral_Classification
+    https://arxiv.org/pdf/1604.03519.pdf
     """
     @staticmethod
     def weight_init(m):

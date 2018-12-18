@@ -58,8 +58,8 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-hyper_data_path',
                         required=False, type=str,
-                        default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
-                        # default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
+                        # default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
+                        default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data')
     parser.add_argument('-forest_data_path',
                         required=False, type=str,
@@ -97,20 +97,19 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
     :param forest_labels: W2xH2xB
     :return:
     """
-    # TODO: confirm if forest data and hyperspectral data
-    # are spatially correspondent. If yes, no need to convert
-    # all the pixels, only the first pixel is needed
     forest_rows, forest_cols, num_bands = forest_labels.shape
     rows, cols, _ = hyper_image.shape
     hyper_labels = np.zeros((rows, cols, num_bands))
 
-    for row in range(rows):
-        for col in range(cols):
-            # get coordinate of (row, col) in forest map
-            c, r = hyp2for((col, row), hyper_gt, forest_gt)
-            # assert forest_cols >= c >= 0 and forest_rows >= r >= 0, \
-            #     "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
-            hyper_labels[row, col] = forest_labels[r, c]
+    c, r = hyp2for((0, 0), hyper_gt, forest_gt)
+    hyper_labels = forest_labels[r:(r+rows), c:(c+cols)]
+    # for row in range(rows):
+    #     for col in range(cols):
+    #         # get coordinate of (row, col) in forest map
+    #         c, r = hyp2for((col, row), hyper_gt, forest_gt)
+    #         # assert forest_cols >= c >= 0 and forest_rows >= r >= 0, \
+    #         #     "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
+    #         hyper_labels[row, col] = forest_labels[r, c]
 
     return hyper_labels
 
@@ -265,6 +264,7 @@ def main():
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_gt = get_geotrans(options.hyper_data_path)
     hyper_image = hyper_data.open_memmap()
+    hyper_image = hyper_image[:, :, 0:110]  # only take the first 110 spectral bands, the rest are noisy
 
     forest_data = spectral.open_image(options.forest_data_path)
     forest_gt = get_geotrans(options.forest_data_path)
@@ -286,17 +286,23 @@ def main():
 
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
+    print('Target file has shapes {}'.format(hyper_labels.shape))
+    del hyper_labels, forest_labels, forest_data
 
+    R, C, B = hyper_image.shape
     # storing L2 norm of the image based on normalization method
     if options.normalize_method == 'l2norm_along_channel':  # l2 norm along *band* axis
-        norm = np.linalg.norm(hyper_image, axis=2)
+        # norm = np.linalg.norm(hyper_image, axis=2)
+        norm = np.zeros((R, C))
+        for i in range(0, R):
+            norm[i] = np.linalg.norm(hyper_image[i, :, :], axis=1)
     elif options.normalize_method == 'l2norm_channel_wise':  # l2 norm separately for each channel
         norm = np.linalg.norm(hyper_image, axis=(0, 1))
 
     norm[norm > 0] = 1.0 / norm[norm > 0]  # invert positive values
     torch.save(torch.from_numpy(norm), src_name)
 
-    print('Source and target files have shapes {}, {}'.format(hyper_image.shape, hyper_labels.shape))
+    print('Source file has shapes {}'.format(norm.shape))
     print('Processed files are stored under "./data" directory')
     print('End processing data...')
 

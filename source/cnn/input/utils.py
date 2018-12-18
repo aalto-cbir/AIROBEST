@@ -1,4 +1,5 @@
 import numpy as np
+from PIL import Image
 from sklearn.model_selection import train_test_split
 import torch
 import matplotlib.pyplot as plt
@@ -23,8 +24,10 @@ def in_hypmap(W, H, x, y, patch_size):
 def get_patch(tensor, row, col, patch_size):
     """
     Get patch from center pixel
+    :param tensor:
     :param row:
     :param col:
+    :param patch_size:
     :return:
     """
     row1, col1 = row - patch_size // 2, col - patch_size // 2
@@ -33,7 +36,7 @@ def get_patch(tensor, row, col, patch_size):
     return tensor[row1:(row2 + 1), col1:(col2 + 1)]
 
 
-def split_data(rows, cols, norm_inv, patch_size, stride=1):
+def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
     """
     Split dataset into train, test, val sets based on the coordinates
     of each pixel in the hyperspectral image
@@ -41,31 +44,45 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1):
     :param cols: number of columns in hyperspectral image
     :param patch_size: patch_size for a training image patch, expected to be an odd number
     :param stride: amount of pixels to skip while looping through the hyperspectral image
+    :param mode: sampling mode, if
+                'random': randomly sample the pixels
+                'split': reserve part of the input image for validation,
+                'grid': sliding through the hyperspectral image without overlapping each other.
     :return: train, test, val lists with the pixel positions
     """
     train = []
     val = []
+    coords = []
+    if mode == 'grid':
+        stride = patch_size  # overwrite striding value so that the patches are not overlapping
     # reserve 20% in the middle part of the hyperspectral image for validation
-    val_row_start = round(rows * 2 / 5)
-    val_row_end = val_row_start + round(rows / 5)
+    val_row_start = round(rows * 3 / 5)
+    val_row_end = val_row_start + round(rows / 6)
     for i in range(patch_size // 2, rows - patch_size // 2, stride):
         for j in range(patch_size // 2, cols - patch_size // 2, stride):
             patch = get_patch(norm_inv, i, j, patch_size)
-            if torch.min(patch) > 0:  # make sure there is no white pixels in the patch
-                if i <= val_row_start - patch_size // 2 or val_row_end + patch_size // 2 <= i:
-                    train.append((i, j))
-                elif val_row_start + patch_size // 2 <= i <= val_row_end - patch_size // 2:
-                    val.append((i, j))
+            if torch.min(patch) > 0:  # make sure there is no black pixels in the patch
+                if mode == 'random' or mode == 'grid':
+                    coords.append((i, j))
+                elif mode == 'split':
+                    if i <= val_row_start - patch_size // 2 or val_row_end + patch_size // 2 <= i:
+                        train.append((i, j))
+                    elif val_row_start <= i <= val_row_end:
+                            val.append((i, j))
 
-    # train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
-    # train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
-
-    np.random.seed(123)
-    np.random.shuffle(train)
-    np.random.seed(123)
-    np.random.shuffle(val)
+    if mode == 'random' or mode == 'grid':
+        # train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
+        # train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
+        train, val = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
+    elif mode == 'split':
+        np.random.seed(123)
+        np.random.shuffle(train)
+        np.random.seed(123)
+        np.random.shuffle(val)
 
     print('Number of training pixels: %d, val pixels: %d' % (len(train), len(val)))
+    print('Train', train[0:10])
+    print('Val', val[0:10])
     return train, val
 
 
@@ -79,3 +96,17 @@ def visualize_label(hyper_labels):
     plt.savefig('./data/labels-bar.jpg')
     # TODO: pie charts for classes
     plt.show()
+
+
+def open_as_rgb(hyper_image, wavelength, options):
+    # if not visualizer:
+    #     return
+
+    i_r = abs(wavelength - 0.660).argmin()  # red band, the closest to 660 nm
+    i_g = abs(wavelength - 0.550).argmin()  # green, closest band to 550 nm
+    i_b = abs(wavelength - 0.490).argmin()  # blue, closest to 490 nm
+
+    hyp_rgb = hyper_image[:, :, [i_r, i_g, i_b]] / 8
+    hyp_rgb = np.asarray(np.copy(hyp_rgb).transpose((2, 0, 1)), dtype='float32')
+    # visualizer.image(hyp_rgb)
+    # Image.fromarray(hyp_rgb.astype('uint8')).save('./checkpoint/{}'.format(options.save_dir))

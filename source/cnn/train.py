@@ -17,7 +17,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import visdom
 
 from models.model import ChenModel, LeeModel
-from input.utils import split_data
+from input.utils import split_data, open_as_rgb
 from input.data_loader import get_loader
 
 
@@ -267,8 +267,8 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
             print('Validation loss: {:.5f}, validation accuracy: {:.2f}%'.format(val_loss, val_accuracy))
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
-            metric = val_loss
-            # metric = -val_accuracy
+            # metric = val_loss
+            metric = -val_accuracy
 
         if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
             scheduler.step(metric)
@@ -312,12 +312,13 @@ def main():
     device = get_device(options.gpu)
 
     visualize = options.use_visdom
+    visualizer = None
     if visualize:
         # 'server' option is needed because of this error: https://github.com/facebookresearch/visdom/issues/490
-        vis = visdom.Visdom(server=options.visdom_server, env='Train')
-        if not vis.check_connection:
+        visualizer = visdom.Visdom(server=options.visdom_server, env='Train')
+        if not visualizer.check_connection:
             print("Visdom server is unreachable. Run `bash server.sh` to start the server.")
-            vis = None
+            visualizer = None
 
     metadata = get_input_data(options.metadata)
     out_cls = metadata['num_classes']
@@ -325,9 +326,14 @@ def main():
 
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_image = hyper_data.open_memmap()
+    hyper_image = hyper_image[:, :, 0:110]  # only take the first 110 spectral bands, the rest are noisy
     hyper_labels = torch.load(options.tgt_path)
     norm_inv = torch.load(options.src_norm_multiplier)
 
+    wavelength_list = hyper_data.metadata['wavelength']
+    wavelength = np.array(wavelength_list, dtype=float)
+
+    # open_as_rgb(hyper_image, wavelength, options)
     hyper_labels_cls = hyper_labels[:, :, :out_cls]
     hyper_labels_reg = hyper_labels[:, :, out_cls:]
 
@@ -395,14 +401,14 @@ def main():
                 batch_size=options.batch_size,
                 device=device.type)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     print(model)
     print('Classification loss function:', loss_cls)
     print('Regression loss function:', loss_reg)
     print('Scheduler:', scheduler.__dict__)
 
     train(model, optimizer, loss_cls, loss_reg, train_loader,
-          val_loader, device, metadata, options, scheduler=scheduler, visualize=vis)
+          val_loader, device, metadata, options, scheduler=scheduler, visualize=visualizer)
     print('End training...')
 
 
