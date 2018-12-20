@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
 #SBATCH -J train
-#SBATCH --mem-per-cpu 150000
+#SBATCH --mem-per-cpu 100000
 ##SBATCH --gres=gpu:k80:1
 ##SBATCH -p gputest
 ##SBATCH -t 0:15:00
 
 #SBATCH --gres=gpu:p100:1
 #SBATCH -p gpu
-#SBATCH -t 2:30:00
+#SBATCH -t 1:30:00
 
 id -a
 
@@ -18,7 +18,7 @@ module list
 
 #env
 
-python -u train.py  -hyper_data_path /proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr \
+python -u train.py  -hyper_data_path ./data/hyper_image.pt \
                     -src_norm_multiplier ./data/hyperspectral_src_l2norm_along_channel.pt \
                     -tgt_path ./data/hyperspectral_tgt_full.pt \
                     -metadata ./data/metadata_full.pt \
@@ -28,7 +28,7 @@ python -u train.py  -hyper_data_path /proj/deepsat/hyperspectral/20170615_reflec
                     -batch_size 64 \
                     -epoch 50 \
                     -model ChenModel \
-                    -save_dir Chen-1812018-test \
+                    -save_dir Chen-1812018 \
                     -report_frequency 50 \
                     -visdom_server http://taito-gpu.csc.fi \
                     -gpu 0

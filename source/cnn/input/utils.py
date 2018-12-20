@@ -5,6 +5,38 @@ import torch
 import matplotlib.pyplot as plt
 
 
+def envi2world_p(xy, GT):
+    P = xy[0] + 0.5  # relative to pixel corner
+    L = xy[1] + 0.5
+    xy = (GT[0] + P * GT[1] + L * GT[2],
+          GT[3] + P * GT[4] + L * GT[5])
+    return xy
+
+
+def world2envi_p(xy, GT):
+    X = xy[0]
+    Y = xy[1]
+    D = GT[1] * GT[5] - GT[2] * GT[4]
+    xy = ((X * GT[5] - GT[0] * GT[5] + GT[2] * GT[3] - Y * GT[2]) / D - 0.5,
+          (Y * GT[1] - GT[1] * GT[3] + GT[0] * GT[4] - X * GT[4]) / D - 0.5)
+    # convert coordinates to integers
+    xy = (int(np.round(xy[0])), int(np.round(xy[1])))
+    return xy
+
+
+def hyp2for(xy0, hgt, fgt):
+    """
+    Convert coordinates of a point in hyperspectral image system to forest map system
+    :param xy0: coordinate of the point to convert, in order (col, row)
+    :param hgt: hyperspectral geo transform
+    :param fgt: forest geo transform
+    :return: coordinate in forest map, in order (col, row)
+    """
+    xy1 = envi2world_p(xy0, hgt)
+    xy2 = world2envi_p(xy1, fgt)
+    return int(np.floor(xy2[0] + 0.1)), int(np.floor(xy2[1] + 0.1))
+
+
 def in_hypmap(W, H, x, y, patch_size):
     """
     Check if a point with coordinate (x, y) lines within the image with size (W, H)
@@ -73,7 +105,7 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
     if mode == 'random' or mode == 'grid':
         # train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
         # train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
-        train, val = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
+        train, val = train_test_split(coords, train_size=0.9, random_state=123, shuffle=True)
     elif mode == 'split':
         np.random.seed(123)
         np.random.shuffle(train)

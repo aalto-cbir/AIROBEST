@@ -34,10 +34,11 @@ class ChenModel(nn.Module):
 
         self.features_size = self._get_final_flattened_size()
         print("Feature size:", self.features_size)
+        self.fc_shared = nn.Linear(self.features_size, 2048)
 
-        self.fc_cls1 = nn.Linear(self.features_size, 200)
+        self.fc_cls1 = nn.Linear(2048, 200)
         self.fc_cls2 = nn.Linear(200, out_cls)
-        self.fc_reg1 = nn.Linear(self.features_size, 200)
+        self.fc_reg1 = nn.Linear(2048, 200)
         self.fc_reg2 = nn.Linear(200, out_reg)
         # self.fc_cls = nn.Linear(self.features_size, out_cls)
         # self.fc_reg = nn.Linear(self.features_size, out_reg)
@@ -66,6 +67,7 @@ class ChenModel(nn.Module):
         x = F.relu(self.conv3(x))
         x = self.dropout(x)
         x = x.view(-1, self.features_size)
+        x = F.relu(self.fc_shared(x))
 
         # for classification task
         x_cls = F.relu(self.fc_cls1(x))

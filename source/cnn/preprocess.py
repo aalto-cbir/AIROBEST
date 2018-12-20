@@ -12,43 +12,12 @@ import numpy as np
 import spectral
 import torch
 
+from input.utils import hyp2for, open_as_rgb
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
 
 sys.stdout.flush()
-
-
-# TODO: move to tools
-def envi2world_p(xy, GT):
-    P = xy[0] + 0.5  # relative to pixel corner
-    L = xy[1] + 0.5
-    xy = (GT[0] + P * GT[1] + L * GT[2],
-          GT[3] + P * GT[4] + L * GT[5])
-    return xy
-
-
-def world2envi_p(xy, GT):
-    X = xy[0]
-    Y = xy[1]
-    D = GT[1] * GT[5] - GT[2] * GT[4]
-    xy = ((X * GT[5] - GT[0] * GT[5] + GT[2] * GT[3] - Y * GT[2]) / D - 0.5,
-          (Y * GT[1] - GT[1] * GT[3] + GT[0] * GT[4] - X * GT[4]) / D - 0.5)
-    # convert coordinates to integers
-    xy = (int(np.round(xy[0])), int(np.round(xy[1])))
-    return xy
-
-
-def hyp2for(xy0, hgt, fgt):
-    """
-    Convert coordinates of a point in hyperspectral image system to forest map system
-    :param xy0: coordinate of the point to convert, in order (col, row)
-    :param hgt: hyperspectral geo transform
-    :param fgt: forest geo transform
-    :return: coordinate in forest map, in order (col, row)
-    """
-    xy1 = envi2world_p(xy0, hgt)
-    xy2 = world2envi_p(xy1, fgt)
-    return int(np.floor(xy2[0] + 0.1)), int(np.floor(xy2[1] + 0.1))
 
 
 def parse_args():
@@ -97,19 +66,10 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
     :param forest_labels: W2xH2xB
     :return:
     """
-    forest_rows, forest_cols, num_bands = forest_labels.shape
     rows, cols, _ = hyper_image.shape
-    hyper_labels = np.zeros((rows, cols, num_bands))
 
     c, r = hyp2for((0, 0), hyper_gt, forest_gt)
     hyper_labels = forest_labels[r:(r+rows), c:(c+cols)]
-    # for row in range(rows):
-    #     for col in range(cols):
-    #         # get coordinate of (row, col) in forest map
-    #         c, r = hyp2for((col, row), hyper_gt, forest_gt)
-    #         # assert forest_cols >= c >= 0 and forest_rows >= r >= 0, \
-    #         #     "Invalid coordinates after conversion: %s %s --> %s %s " % (col, row, c, r)
-    #         hyper_labels[row, col] = forest_labels[r, c]
 
     return hyper_labels
 
@@ -286,8 +246,14 @@ def main():
 
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
+    torch.save(torch.from_numpy(hyper_image), './data/hyper_image.pt')
     print('Target file has shapes {}'.format(hyper_labels.shape))
     del hyper_labels, forest_labels, forest_data
+
+    wavelength_list = hyper_data.metadata['wavelength']
+    wavelength = np.array(wavelength_list, dtype=float)
+
+    # open_as_rgb(hyper_image, wavelength, options)
 
     R, C, B = hyper_image.shape
     # storing L2 norm of the image based on normalization method

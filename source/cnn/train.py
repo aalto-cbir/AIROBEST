@@ -107,7 +107,6 @@ def get_device(id):
 def save_checkpoint(model, optimizer, model_name, epoch, options):
     """
     Saving model's state dict
-    TODO: also save optimizer' state dict and model options and enable restoring model from last training step
     :param model: model to save
     :param optimizer: optimizer to save
     :param model_name: model will be saved under this name
@@ -176,7 +175,7 @@ def validate(net, criterion_cls, criterion_reg, val_loader, device, metadata):
             pred_cls, pred_reg = net(src)
             loss_cls = criterion_cls(pred_cls, tgt_cls)
             loss_reg = criterion_reg(pred_reg, tgt_reg)
-            loss = loss_cls + 3 * loss_reg
+            loss = 1 * loss_cls + 3 * loss_reg
 
             sum_loss += loss.item()
             sum_accuracy += compute_accuracy(pred_cls, tgt_cls, metadata)
@@ -193,7 +192,6 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
     """
     Training
 
-    TODO: checkpoint
     :param net:
     :param optimizer:
     :param criterion_cls:
@@ -236,7 +234,7 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
             pred_cls, pred_reg = net(src)
             loss_cls = criterion_cls(pred_cls, tgt_cls)
             loss_reg = criterion_reg(pred_reg, tgt_reg)
-            loss = loss_cls + 3 * loss_reg
+            loss = 1 * loss_cls + 3 * loss_reg
 
             sum_loss += loss.item()
             epoch_loss += loss.item()
@@ -246,7 +244,6 @@ def train(net, optimizer, criterion_cls, criterion_reg, train_loader, val_loader
             optimizer.step()
 
             if train_step % options.report_frequency == 0:
-                # TODO: with LeeModel, take average of the loss
                 avg_losses.append(np.mean(losses[-100:]))
                 print('Training loss at step {}: {:.5f}, average loss: {:.5f}, cls_loss: {:.5f}, reg_loss: {:.5f}'
                       .format(train_step, loss.item(), avg_losses[-1], loss_cls.item(), loss_reg.item()))
@@ -324,16 +321,10 @@ def main():
     out_cls = metadata['num_classes']
     assert out_cls > 0, 'Number of classes has to be > 0'
 
-    hyper_data = spectral.open_image(options.hyper_data_path)
-    hyper_image = hyper_data.open_memmap()
-    hyper_image = hyper_image[:, :, 0:110]  # only take the first 110 spectral bands, the rest are noisy
+    hyper_image = torch.load(options.hyper_data_path)
     hyper_labels = torch.load(options.tgt_path)
     norm_inv = torch.load(options.src_norm_multiplier)
 
-    wavelength_list = hyper_data.metadata['wavelength']
-    wavelength = np.array(wavelength_list, dtype=float)
-
-    # open_as_rgb(hyper_image, wavelength, options)
     hyper_labels_cls = hyper_labels[:, :, :out_cls]
     hyper_labels_reg = hyper_labels[:, :, out_cls:]
 
@@ -368,6 +359,7 @@ def main():
                               model_name=model_name,
                               is_3d_convolution=True,
                               patch_size=options.patch_size,
+                              device=device,
                               shuffle=True)
     val_loader = get_loader(hyper_image,
                             norm_inv,
@@ -378,6 +370,7 @@ def main():
                             model_name=model_name,
                             is_3d_convolution=True,
                             patch_size=options.patch_size,
+                            device=device,
                             shuffle=True)
 
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
