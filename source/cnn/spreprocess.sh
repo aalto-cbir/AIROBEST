@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #SBATCH -J preprocess
-#SBATCH --mem-per-cpu 100000
+#SBATCH --mem-per-cpu 200000
 ##SBATCH --gres=gpu:k80:1
 ##SBATCH -p gputest
 ##SBATCH -t 0:15:00

@@ -12,7 +12,7 @@ class HypDataset(data.Dataset):
     """
 
     def __init__(self, hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name,
-                 is_3d_convolution=False, device='cpu'):
+                 is_3d_convolution=False):
         """
 
         :param hyper_image: hyperspectral image with shape WxHxC (C: number of channels)
@@ -30,7 +30,6 @@ class HypDataset(data.Dataset):
         self.hyper_row = self.hyper_image.shape[0]
         self.hyper_col = self.hyper_image.shape[1]
         self.model_name = model_name
-        self.device = device
         # assert os.path.exists(coords_path), 'File does not exist in path: %s' % coords_path
         # self.coords = np.load(coords_path)
         self.coords = coords
@@ -44,8 +43,8 @@ class HypDataset(data.Dataset):
     def __getitem__(self, idx):
         row, col = self.coords[idx]
 
-        src = get_patch(self.hyper_image, row, col, self.patch_size).to(self.device, dtype=torch.float32)
-        src_norm_inv = get_patch(self.norm_inv, row, col, self.patch_size).to(self.device, dtype=torch.float32)
+        src = get_patch(self.hyper_image, row, col, self.patch_size).float()
+        src_norm_inv = get_patch(self.norm_inv, row, col, self.patch_size)
         src_norm_inv = torch.unsqueeze(src_norm_inv, -1)
         src = src * src_norm_inv
         if self.model_name == 'LeeModel':
@@ -70,9 +69,9 @@ class HypDataset(data.Dataset):
 
 
 def get_loader(hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, batch_size, patch_size=11,
-               model_name='ChenModel', device=None, shuffle=False, num_workers=0, is_3d_convolution=False):
+               model_name='ChenModel', shuffle=False, num_workers=0, is_3d_convolution=False):
     dataset = HypDataset(hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, patch_size,
-                         model_name=model_name, is_3d_convolution=is_3d_convolution, device=device)
+                         model_name=model_name, is_3d_convolution=is_3d_convolution)
 
     data_loader = data.DataLoader(dataset=dataset,
                                   batch_size=batch_size,

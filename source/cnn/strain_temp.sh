@@ -2,13 +2,13 @@
 
 #SBATCH -J train
 #SBATCH --mem-per-cpu 100000
-##SBATCH --gres=gpu:k80:1
-##SBATCH -p gputest
-##SBATCH -t 0:15:00
+#SBATCH --gres=gpu:k80:1
+#SBATCH -p gputest
+#SBATCH -t 0:15:00
 
-#SBATCH --gres=gpu:p100:1
-#SBATCH -p gpu
-#SBATCH -t 1:30:00
+##SBATCH --gres=gpu:p100:1
+##SBATCH -p gpu
+##SBATCH -t 1:30:00
 
 id -a
 
@@ -28,7 +28,7 @@ python -u train.py  -hyper_data_path ./data/hyper_image.pt \
                     -batch_size 64 \
                     -epoch 50 \
                     -model ChenModel \
-                    -save_dir Chen-1812018 \
+                    -save_dir Chen-2012018-test1 \
                     -report_frequency 50 \
                     -visdom_server http://taito-gpu.csc.fi \
                     -gpu 0

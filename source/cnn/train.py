@@ -323,7 +323,7 @@ def main():
 
     hyper_image = torch.load(options.hyper_data_path)
     hyper_labels = torch.load(options.tgt_path)
-    norm_inv = torch.load(options.src_norm_multiplier)
+    norm_inv = torch.load(options.src_norm_multiplier).float()
 
     hyper_labels_cls = hyper_labels[:, :, :out_cls]
     hyper_labels_reg = hyper_labels[:, :, out_cls:]
@@ -342,7 +342,7 @@ def main():
         loss_cls = nn.BCELoss()
         loss_reg = nn.MSELoss()
     elif model_name == 'LeeModel':
-        model = LeeModel(num_bands, out_cls)
+        model = LeeModel(num_bands, out_cls, out_reg)
         loss_cls = nn.BCELoss()
         loss_reg = nn.MSELoss()
 
@@ -359,7 +359,6 @@ def main():
                               model_name=model_name,
                               is_3d_convolution=True,
                               patch_size=options.patch_size,
-                              device=device,
                               shuffle=True)
     val_loader = get_loader(hyper_image,
                             norm_inv,
@@ -370,7 +369,6 @@ def main():
                             model_name=model_name,
                             is_3d_convolution=True,
                             patch_size=options.patch_size,
-                            device=device,
                             shuffle=True)
 
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it

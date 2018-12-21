@@ -76,7 +76,7 @@ class ChenModel(nn.Module):
 
         # for regression task
         x_reg = F.relu(self.fc_reg1(x))
-        # x_reg = F.sigmoid(self.fc_reg2(x_reg))  # Don't use Relu at final FC layer <~ Relu is not differentiable
+        # x_reg = F.sigmoid(self.fc_reg2(x_reg))
         x_reg = self.fc_reg2(x_reg)
         # x_reg = self.fc_reg(x)
 
@@ -98,7 +98,7 @@ class LeeModel(nn.Module):
             init.xavier_normal_(m.weight)
             init.constant_(m.bias, 0)
 
-    def __init__(self, in_channels, n_classes):
+    def __init__(self, in_channels, out_cls, out_reg):
         super(LeeModel, self).__init__()
         # The first convolutional layer applied to the input hyperspectral
         # image uses an inception module that locally convolves the input
@@ -121,7 +121,8 @@ class LeeModel(nn.Module):
         # is the same as the fully connected layers of Alexnet
         self.conv6 = nn.Conv2d(128, 128, (1, 1))
         self.conv7 = nn.Conv2d(128, 128, (1, 1))
-        self.conv8 = nn.Conv2d(128, n_classes, (1, 1))
+        self.conv8 = nn.Conv2d(128, out_cls, (1, 1))
+        self.conv9 = nn.Conv2d(128, out_reg, (1, 1))
 
         self.pool = nn.MaxPool2d((3, 3), padding=1, stride=1, dilation=1)
 
@@ -164,7 +165,13 @@ class LeeModel(nn.Module):
         x = self.dropout(x)
         x = F.relu(self.conv7(x))
         x = self.dropout(x)
-        x = self.conv8(x)
-        x = self.pool(x)
-        x = F.sigmoid(x)
-        return x
+
+        x_cls = self.conv8(x)
+        x_cls = self.pool(x_cls)
+        x_cls = F.sigmoid(x_cls)
+
+        x_reg = self.conv9(x)
+        x_reg = self.pool(x_reg)
+        x_reg = F.sigmoid(x_reg)
+
+        return x_cls, x_reg
