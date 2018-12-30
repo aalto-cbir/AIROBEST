@@ -16,8 +16,7 @@ class ChenModel(nn.Module):
         # In the beginning, the weights are randomly initialized
         # with standard deviation 0.001
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
-            # init.normal_(m.weight, std=0.01)
-            init.xavier_normal_(m.weight)
+            init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)  # for 0.4.0 compatibility
 
     def __init__(self, input_channels, out_cls, out_reg, patch_size=27, n_planes=32):
@@ -34,16 +33,11 @@ class ChenModel(nn.Module):
 
         self.features_size = self._get_final_flattened_size()
         print("Feature size:", self.features_size)
-        self.fc_shared = nn.Linear(self.features_size, 2048)
 
-        self.fc_cls1 = nn.Linear(2048, 200)
-        self.fc_cls2 = nn.Linear(200, out_cls)
-        self.fc_reg1 = nn.Linear(2048, 200)
-        self.fc_reg2 = nn.Linear(200, out_reg)
-        # self.fc_cls = nn.Linear(self.features_size, out_cls)
-        # self.fc_reg = nn.Linear(self.features_size, out_reg)
+        self.fc_cls = nn.Linear(self.features_size, out_cls)
+        self.fc_reg = nn.Linear(self.features_size, out_reg)
 
-        self.dropout = nn.Dropout(p=0.3)
+        self.dropout = nn.Dropout(p=0.5)
 
         self.apply(self.weight_init)
 
@@ -67,18 +61,12 @@ class ChenModel(nn.Module):
         x = F.relu(self.conv3(x))
         x = self.dropout(x)
         x = x.view(-1, self.features_size)
-        x = F.relu(self.fc_shared(x))
 
         # for classification task
-        x_cls = F.relu(self.fc_cls1(x))
-        x_cls = F.sigmoid(self.fc_cls2(x_cls))
-        # x_cls = F.sigmoid(self.fc_cls(x))
+        x_cls = F.sigmoid(self.fc_cls(x))
 
         # for regression task
-        x_reg = F.relu(self.fc_reg1(x))
-        # x_reg = F.sigmoid(self.fc_reg2(x_reg))
-        x_reg = self.fc_reg2(x_reg)
-        # x_reg = self.fc_reg(x)
+        x_reg = self.fc_reg(x)
 
         return x_cls, x_reg
 
@@ -173,5 +161,77 @@ class LeeModel(nn.Module):
         x_reg = self.conv9(x)
         x_reg = self.pool(x_reg)
         x_reg = F.sigmoid(x_reg)
+
+        return x_cls, x_reg
+
+
+class PhamModel(nn.Module):
+    """
+    CNN models for multi-task learning, inspired by Chen model
+    """
+
+    @staticmethod
+    def weight_init(m):
+        # In the beginning, the weights are randomly initialized
+        # with standard deviation 0.001
+        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
+            init.xavier_normal_(m.weight)
+            init.constant_(m.bias, 0)  # for 0.4.0 compatibility
+
+    def __init__(self, input_channels, out_cls, out_reg, patch_size=27, n_planes=32):
+        super(PhamModel, self).__init__()
+        self.input_channels = input_channels
+        self.n_planes = n_planes
+        self.patch_size = patch_size
+
+        self.conv1 = nn.Conv3d(1, n_planes, (32, 4, 4))
+        self.pool1 = nn.MaxPool3d((1, 2, 2))
+        self.conv2 = nn.Conv3d(n_planes, n_planes, (32, 5, 5))
+        self.pool2 = nn.MaxPool3d((1, 2, 2))
+        self.conv3 = nn.Conv3d(n_planes, n_planes, (32, 4, 4))
+
+        self.features_size = self._get_final_flattened_size()
+        print("Feature size:", self.features_size)
+        self.fc_shared = nn.Linear(self.features_size, 2048)
+
+        self.fc_cls1 = nn.Linear(2048, 200)
+        self.fc_cls2 = nn.Linear(200, out_cls)
+        self.fc_reg1 = nn.Linear(2048, 200)
+        self.fc_reg2 = nn.Linear(200, out_reg)
+
+        self.dropout = nn.Dropout(p=0.3)
+
+        self.apply(self.weight_init)
+
+    def _get_final_flattened_size(self):
+        with torch.no_grad():
+            x = torch.zeros((1, 1, self.input_channels,
+                             self.patch_size, self.patch_size))
+            x = self.pool1(self.conv1(x))
+            x = self.pool2(self.conv2(x))
+            x = self.conv3(x)
+            _, t, c, w, h = x.size()
+        return t * c * w * h
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = self.pool1(x)
+        x = self.dropout(x)
+        x = F.relu(self.conv2(x))
+        x = self.pool2(x)
+        x = self.dropout(x)
+        x = F.relu(self.conv3(x))
+        x = self.dropout(x)
+        x = x.view(-1, self.features_size)
+        x = F.relu(self.fc_shared(x))
+
+        # for classification task
+        x_cls = F.relu(self.fc_cls1(x))
+        x_cls = F.sigmoid(self.fc_cls2(x_cls))
+
+        # for regression task
+        x_reg = F.relu(self.fc_reg1(x))
+        # x_reg = F.sigmoid(self.fc_reg2(x_reg))
+        x_reg = self.fc_reg2(x_reg)
 
         return x_cls, x_reg

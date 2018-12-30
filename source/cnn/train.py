@@ -11,14 +11,14 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn as nn
-import spectral
 from torchsummary import summary
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import visdom
 
-from models.model import ChenModel, LeeModel
-from input.utils import split_data, open_as_rgb
+from models.model import ChenModel, LeeModel, PhamModel
+from input.utils import split_data
 from input.data_loader import get_loader
+from trainer import Trainer
 
 
 def parse_args():
@@ -341,6 +341,10 @@ def main():
         model = ChenModel(num_bands, out_cls, out_reg, patch_size=options.patch_size, n_planes=32)
         loss_cls = nn.BCELoss()
         loss_reg = nn.MSELoss()
+    elif model_name == 'PhamModel':
+        model = PhamModel(num_bands, out_cls, out_reg, patch_size=options.patch_size, n_planes=32)
+        loss_cls = nn.BCELoss()
+        loss_reg = nn.MSELoss()
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, out_cls, out_reg)
         loss_cls = nn.BCELoss()
@@ -398,8 +402,11 @@ def main():
     print('Regression loss function:', loss_reg)
     print('Scheduler:', scheduler.__dict__)
 
-    train(model, optimizer, loss_cls, loss_reg, train_loader,
-          val_loader, device, metadata, options, scheduler=scheduler, visualize=visualizer)
+    # train(model, optimizer, loss_cls, loss_reg, train_loader,
+    #       val_loader, device, metadata, options, scheduler=scheduler, visualize=visualizer)
+    trainer = Trainer(model, optimizer, loss_cls, loss_reg, scheduler,
+                      device, visualizer, metadata, options)
+    trainer.train(train_loader, val_loader)
     print('End training...')
 
 
