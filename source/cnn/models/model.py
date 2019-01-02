@@ -172,11 +172,9 @@ class PhamModel(nn.Module):
 
     @staticmethod
     def weight_init(m):
-        # In the beginning, the weights are randomly initialized
-        # with standard deviation 0.001
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
             init.xavier_normal_(m.weight)
-            init.constant_(m.bias, 0)  # for 0.4.0 compatibility
+            init.constant_(m.bias, 0)
 
     def __init__(self, input_channels, out_cls, out_reg, patch_size=27, n_planes=32):
         super(PhamModel, self).__init__()
@@ -213,6 +211,9 @@ class PhamModel(nn.Module):
             _, t, c, w, h = x.size()
         return t * c * w * h
 
+    def get_last_shared_layer(self):
+        return self.fc_shared
+
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = self.pool1(x)
@@ -235,3 +236,26 @@ class PhamModel(nn.Module):
         x_reg = self.fc_reg2(x_reg)
 
         return x_cls, x_reg
+
+
+class ModelTrain(nn.Module):
+    def __init__(self, model, criterion_cls, criterion_reg):
+        super(ModelTrain, self).__init__()
+        self.model = model
+        # self.task_count = task_count  # TODO: pass parameter
+        self.task_count = 2
+        # self.task_weights = torch.tensor([1.] * self.task_count, dtype=torch.float, requires_grad=True)
+        self.task_weights = torch.nn.Parameter(torch.tensor([1.0, 5.0]).float())
+        self.criterion_cls = criterion_cls
+        self.criterion_reg = criterion_reg
+
+    def forward(self, src, tgt_cls, tgt_reg):
+        pred_cls, pred_reg = self.model(src)
+        loss_cls = self.criterion_cls(pred_cls, tgt_cls)
+        loss_reg = self.criterion_reg(pred_reg, tgt_reg)
+        task_loss = torch.stack([loss_cls, loss_reg])
+
+        return task_loss, pred_cls, pred_reg
+
+    def get_last_shared_layer(self):
+        return self.model.get_last_shared_layer()

@@ -9,6 +9,9 @@ class Trainer(object):
     def __init__(self, model, optimizer, criterion_cls, criterion_reg, scheduler, device,
                  visualizer, metadata, options):
         self.model = model
+        # self.modelTrain = ModelTrain(model, criterion_cls, criterion_reg, device)
+        # self.task_weights = torch.nn.Parameter(torch.ones(model.task_count))
+        # self.task_weights = torch.tensor([1.] * model.task_count, device=device, requires_grad=True)
         self.optimizer = optimizer
         self.criterion_cls = criterion_cls
         self.criterion_reg = criterion_reg
@@ -31,9 +34,14 @@ class Trainer(object):
 
         # set model in training mode
         self.model.train()
-        self.model.to(self.device)
+        # self.model.to(self.device)
 
         losses = []
+
+        weights = []
+        task_losses = []
+        loss_ratios = []
+        grad_norm_losses = []
 
         print('Start training from epoch: ', start_epoch)
         for e in range(start_epoch, epoch + 1):
@@ -46,23 +54,65 @@ class Trainer(object):
                 tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
                 # tgt = tgt.to(device, dtype=torch.int64)
 
-                self.optimizer.zero_grad()
-                pred_cls, pred_reg = self.model(src)
-                loss_cls = self.criterion_cls(pred_cls, tgt_cls)
-                loss_reg = self.criterion_reg(pred_reg, tgt_reg)
-                loss = 1 * loss_cls + 3 * loss_reg
+                # pred_cls, pred_reg = self.model(src)
+                # loss_cls = self.criterion_cls(pred_cls, tgt_cls)
+                # loss_reg = self.criterion_reg(pred_reg, tgt_reg)
+                # task_loss = torch.tensor([loss_cls, loss_reg], dtype=torch.float, requires_grad=True)
+                task_loss, _, _ = self.model(src, tgt_cls, tgt_reg)
+                weighted_task_loss = self.model.task_weights * task_loss
+                loss = torch.sum(weighted_task_loss)
+                # loss = 1 * loss_cls + 3 * loss_reg
+
+                if e == 1:
+                    initial_task_loss = task_loss.data  # set L(0)
+                    # print('init_task_loss', initial_task_loss)
 
                 sum_loss += loss.item()
                 epoch_loss += loss.item()
                 losses.append(loss.item())
 
-                loss.backward()
+                self.optimizer.zero_grad()
+                loss.backward(retain_graph=True)
+
+                # clear gradient of w_i(t) to update by GN loss
+                self.model.task_weights.grad.data.zero_()
+                # print('Grad: ', self.model.task_weights.grad)
+                self.options.use_gradnorm = True  # TODO: add config option
+                if self.options.use_gradnorm:
+                    # get layer of shared weights
+                    W = self.model.get_last_shared_layer()
+
+                    norms = []
+                    for i in range(len(task_loss)):
+                        gygw = torch.autograd.grad(task_loss[i], W.parameters(), retain_graph=True)
+                        norms.append(torch.norm(self.model.task_weights[i] * gygw[0]))
+                    norms = torch.stack(norms)
+
+                    loss_ratio = task_loss / initial_task_loss
+                    inverse_train_rate = loss_ratio / torch.mean(loss_ratio)
+
+                    # compute the mean norm \tilde{G}_w(t)
+                    mean_norm = torch.mean(norms.data)
+
+                    alpha = 0.16
+                    # compute the GradNorm loss
+                    # this term has to remain constant
+                    constant_term = torch.tensor(mean_norm * (inverse_train_rate ** alpha), requires_grad=False)
+
+                    grad_norm_loss = torch.tensor(torch.sum(torch.abs(norms - constant_term)))
+
+                    # compute the gradient for the weights
+                    self.model.task_weights.grad = torch.autograd.grad(grad_norm_loss, self.model.task_weights)[0]
+                    # grad_norm_loss.backward()
+                    # print('weight grad:', self.model.task_weights, self.model.task_weights.grad)
+
                 self.optimizer.step()
 
                 if train_step % self.options.report_frequency == 0:
                     avg_losses.append(np.mean(losses[-100:]))
-                    print('Training loss at step {}: {:.5f}, average loss: {:.5f}, cls_loss: {:.5f}, reg_loss: {:.5f}'
-                          .format(train_step, loss.item(), avg_losses[-1], loss_cls.item(), loss_reg.item()))
+                    print('Training loss at step {}: {:.5f}, average loss: {:.5f}, task loss: {}, weights: {}'
+                          .format(train_step, loss.item(), avg_losses[-1], task_loss.data.cpu().numpy(), self.model.task_weights.data.cpu().numpy()))
+
                     if self.visualizer is not None:
                         loss_window = self.visualizer.line(
                             X=np.arange(0, train_step + 1, self.options.report_frequency),
@@ -75,7 +125,26 @@ class Trainer(object):
 
                 train_step += 1
 
+            # renormalize
+            normalize_coeff = self.model.task_count / torch.sum(self.model.task_weights.data, dim=0)
+            self.model.task_weights.data = self.model.task_weights.data * normalize_coeff
+
+            # record
+            if torch.cuda.is_available():
+                task_losses.append(task_loss.data.cpu().numpy())
+                loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
+                weights.append(self.model.task_weights.data.cpu().numpy())
+                grad_norm_losses.append(grad_norm_loss.data.cpu().numpy())
+            else:
+                task_losses.append(task_loss.data.numpy())
+                loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
+                weights.append(self.model.task_weights.data.numpy())
+                grad_norm_losses.append(grad_norm_loss.data.numpy())
+
             epoch_loss = epoch_loss / len(train_loader)
+            print('Epoch {}: loss_ratio={}, weights={}, task_loss={}, grad_norm_loss={}, total loss={}'.format(
+                e, loss_ratio.data.cpu().numpy(), self.model.task_weights.data.cpu().numpy(),
+                task_loss.data.cpu().numpy(), grad_norm_loss.data.cpu().numpy(), loss.item()))
             print('Average epoch loss: {:.5f}'.format(epoch_loss))
             metric = epoch_loss
             if val_loader is not None:
@@ -102,6 +171,9 @@ class Trainer(object):
             if e % save_every == 0:
                 self.save_checkpoint(e)
 
+        task_losses = np.array(task_losses)
+        weights = np.array(weights)
+
     def validate(self, val_loader):
         sum_loss = 0
         N_samples = 0
@@ -113,10 +185,13 @@ class Trainer(object):
             N_samples += len(src)
 
             with torch.no_grad():
-                pred_cls, pred_reg = self.model(src)
-                loss_cls = self.criterion_cls(pred_cls, tgt_cls)
-                loss_reg = self.criterion_reg(pred_reg, tgt_reg)
-                loss = 1 * loss_cls + 3 * loss_reg
+                # pred_cls, pred_reg = self.model(src)
+                # loss_cls = self.criterion_cls(pred_cls, tgt_cls)
+                # loss_reg = self.criterion_reg(pred_reg, tgt_reg)
+                # loss = 1 * loss_cls + 3 * loss_reg
+                task_loss, pred_cls, pred_reg = self.model(src, tgt_cls, tgt_reg)
+                weighted_task_loss = self.model.task_weights * task_loss
+                loss = torch.sum(weighted_task_loss)
 
                 sum_loss += loss.item()
                 sum_accuracy += self.compute_accuracy(pred_cls, tgt_cls)
