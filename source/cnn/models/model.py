@@ -244,7 +244,6 @@ class ModelTrain(nn.Module):
         self.model = model
         # self.task_count = task_count  # TODO: pass parameter
         self.task_count = 2
-        # self.task_weights = torch.tensor([1.] * self.task_count, dtype=torch.float, requires_grad=True)
         self.task_weights = torch.nn.Parameter(torch.tensor([1.0, 5.0]).float())
         self.criterion_cls = criterion_cls
         self.criterion_reg = criterion_reg

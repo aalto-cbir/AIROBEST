@@ -9,9 +9,6 @@ class Trainer(object):
     def __init__(self, model, optimizer, criterion_cls, criterion_reg, scheduler, device,
                  visualizer, metadata, options):
         self.model = model
-        # self.modelTrain = ModelTrain(model, criterion_cls, criterion_reg, device)
-        # self.task_weights = torch.nn.Parameter(torch.ones(model.task_count))
-        # self.task_weights = torch.tensor([1.] * model.task_count, device=device, requires_grad=True)
         self.optimizer = optimizer
         self.criterion_cls = criterion_cls
         self.criterion_reg = criterion_reg
@@ -34,7 +31,6 @@ class Trainer(object):
 
         # set model in training mode
         self.model.train()
-        # self.model.to(self.device)
 
         losses = []
 
@@ -52,17 +48,12 @@ class Trainer(object):
                 src = src.to(self.device, dtype=torch.float32)
                 tgt_cls = tgt_cls.to(self.device, dtype=torch.float32)
                 tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
-                # tgt = tgt.to(device, dtype=torch.int64)
 
-                # pred_cls, pred_reg = self.model(src)
-                # loss_cls = self.criterion_cls(pred_cls, tgt_cls)
-                # loss_reg = self.criterion_reg(pred_reg, tgt_reg)
-                # task_loss = torch.tensor([loss_cls, loss_reg], dtype=torch.float, requires_grad=True)
                 task_loss, _, _ = self.model(src, tgt_cls, tgt_reg)
                 weighted_task_loss = self.model.task_weights * task_loss
                 loss = torch.sum(weighted_task_loss)
-                # loss = 1 * loss_cls + 3 * loss_reg
 
+                # TODO: reload from checkpoint
                 if e == 1:
                     initial_task_loss = task_loss.data  # set L(0)
                     # print('init_task_loss', initial_task_loss)
@@ -104,7 +95,6 @@ class Trainer(object):
                     # compute the gradient for the weights
                     self.model.task_weights.grad = torch.autograd.grad(grad_norm_loss, self.model.task_weights)[0]
                     # grad_norm_loss.backward()
-                    # print('weight grad:', self.model.task_weights, self.model.task_weights.grad)
 
                 self.optimizer.step()
 
@@ -185,10 +175,6 @@ class Trainer(object):
             N_samples += len(src)
 
             with torch.no_grad():
-                # pred_cls, pred_reg = self.model(src)
-                # loss_cls = self.criterion_cls(pred_cls, tgt_cls)
-                # loss_reg = self.criterion_reg(pred_reg, tgt_reg)
-                # loss = 1 * loss_cls + 3 * loss_reg
                 task_loss, pred_cls, pred_reg = self.model(src, tgt_cls, tgt_reg)
                 weighted_task_loss = self.model.task_weights * task_loss
                 loss = torch.sum(weighted_task_loss)
