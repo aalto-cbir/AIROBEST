@@ -8,7 +8,7 @@
 
 ##SBATCH --gres=gpu:p100:1
 ##SBATCH -p gpu
-##SBATCH -t 1:30:00
+##SBATCH -t 2:00:00
 
 id -a
 
@@ -20,16 +20,16 @@ module list
 
 python -u train.py  -hyper_data_path ./data/hyper_image.pt \
                     -src_norm_multiplier ./data/hyperspectral_src_l2norm_along_channel.pt \
-                    -tgt_path ./data/hyperspectral_tgt_full.pt \
+                    -tgt_path ./data/hyperspectral_tgt_full_normalized.pt \
                     -metadata ./data/metadata_full.pt \
                     -patch_size 27 \
                     -patch_stride 2 \
                     -lr 0.0001 \
                     -batch_size 64 \
                     -epoch 50 \
-                    -model ChenModel \
-                    -save_dir Chen-2012018-test1 \
-                    -report_frequency 50 \
+                    -model PhamModel \
+                    -save_dir Pham-010119-test2 \
+                    -report_frequency 5 \
                     -visdom_server http://taito-gpu.csc.fi \
                     -gpu 0
 

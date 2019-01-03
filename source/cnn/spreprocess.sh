@@ -20,7 +20,7 @@ module list
 
 
 srun python -u preprocess.py    -src_file_name hyperspectral_src \
-                                -tgt_file_name hyperspectral_tgt \
+                                -tgt_file_name hyperspectral_tgt_full_normalized \
                                 -metadata_file_name metadata_full \
                                 -normalize_method l2norm_along_channel \
                                 -hyper_data_path /proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr \

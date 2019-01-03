@@ -12,7 +12,7 @@ import numpy as np
 import spectral
 import torch
 
-from input.utils import hyp2for, open_as_rgb
+from input.utils import hyp2for, world2envi_p, open_as_rgb
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
