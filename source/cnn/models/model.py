@@ -176,7 +176,7 @@ class PhamModel(nn.Module):
             init.xavier_normal_(m.weight)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -192,10 +192,18 @@ class PhamModel(nn.Module):
         print("Feature size:", self.features_size)
         self.fc_shared = nn.Linear(self.features_size, 2048)
 
-        self.fc_cls1 = nn.Linear(2048, 200)
-        self.fc_cls2 = nn.Linear(200, out_cls)
-        self.fc_reg1 = nn.Linear(2048, 200)
-        self.fc_reg2 = nn.Linear(200, out_reg)
+        categorical = metadata['categorical']
+        self.n_cls = len(categorical.keys())
+        self.n_reg = out_reg
+        for idx, (key, values) in enumerate(categorical.items()):
+            setattr(self, 'fc_cls_{}'.format(idx), torch.nn.Linear(2048, len(values)))
+
+        for i in range(out_reg):
+            setattr(self, 'fc_reg_{}'.format(i), torch.nn.Linear(2048, 1))
+        # self.fc_cls1 = nn.Linear(1024, 200)
+        # self.fc_cls2 = nn.Linear(200, out_cls)
+        # self.fc_reg1 = nn.Linear(2048, 200)
+        # self.fc_reg2 = nn.Linear(200, out_reg)
 
         self.dropout = nn.Dropout(p=0.3)
 
@@ -226,35 +234,57 @@ class PhamModel(nn.Module):
         x = x.view(-1, self.features_size)
         x = F.relu(self.fc_shared(x))
 
+        pred_cls = torch.tensor([]).cuda()
         # for classification task
-        x_cls = F.relu(self.fc_cls1(x))
-        x_cls = F.sigmoid(self.fc_cls2(x_cls))
-
+        # x_cls = F.relu(self.fc_cls1(x))
+        # x_cls = F.sigmoid(self.fc_cls2(x_cls))
+        for i in range(self.n_cls):
+            layer = getattr(self, 'fc_cls_{}'.format(i))
+            pred_cls = torch.cat((pred_cls, F.softmax(layer(x))), 1)
         # for regression task
-        x_reg = F.relu(self.fc_reg1(x))
-        # x_reg = F.sigmoid(self.fc_reg2(x_reg))
-        x_reg = self.fc_reg2(x_reg)
+        # x_reg = F.relu(self.fc_reg1(x))
+        # x_reg = self.fc_reg2(x_reg)
+        pred_reg = torch.tensor([]).cuda()
+        for i in range(self.n_reg):
+            layer = getattr(self, 'fc_reg_{}'.format(i))
+            pred_reg = torch.cat((pred_reg, layer(x)), 1)
 
-        return x_cls, x_reg
+        return pred_cls, pred_reg
 
 
 class ModelTrain(nn.Module):
-    def __init__(self, model, criterion_cls, criterion_reg):
+    def __init__(self, model, criterion_cls, criterion_reg, metadata):
         super(ModelTrain, self).__init__()
         self.model = model
-        # self.task_count = task_count  # TODO: pass parameter
-        self.task_count = 2
-        self.task_weights = torch.nn.Parameter(torch.tensor([1.0, 5.0]).float())
+        self.task_count = model.n_cls + model.n_reg
+        self.task_weights = torch.nn.Parameter(torch.tensor([1.0]*self.task_count).float())
         self.criterion_cls = criterion_cls
         self.criterion_reg = criterion_reg
+        self.categorical = metadata['categorical']
 
     def forward(self, src, tgt_cls, tgt_reg):
-        pred_cls, pred_reg = self.model(src)
-        loss_cls = self.criterion_cls(pred_cls, tgt_cls)
-        loss_reg = self.criterion_reg(pred_reg, tgt_reg)
-        task_loss = torch.stack([loss_cls, loss_reg])
+        # pred_cls, pred_reg = self.model(src)
+        # loss_cls = self.criterion_cls(pred_cls, tgt_cls)
+        # loss_reg = self.criterion_reg(pred_reg, tgt_reg)
+        # task_loss = torch.stack([loss_cls, loss_reg])
 
-        return task_loss, pred_cls, pred_reg
+        # return task_loss, pred_cls, pred_reg
+        task_loss = []
+        pred_cls, pred_reg = self.model(src)
+        start = 0
+        for key, values in self.categorical.items():
+            n_classes = len(values)
+            prediction, target = pred_cls[:, start:(start+n_classes)], tgt_cls[:, start:(start+n_classes)]
+            single_loss = self.criterion_cls(prediction, target)
+            task_loss.append(single_loss)
+            start += n_classes
+
+        for idx in range(self.model.n_reg):
+            prediction, target = pred_reg[:, idx], tgt_reg[:, idx]
+            single_loss = self.criterion_reg(prediction, target)
+            task_loss.append(single_loss)
+
+        return torch.stack(task_loss), pred_cls, pred_reg
 
     def get_last_shared_layer(self):
         return self.model.get_last_shared_layer()

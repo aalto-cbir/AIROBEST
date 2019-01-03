@@ -8,7 +8,7 @@
 
 ##SBATCH --gres=gpu:p100:1
 ##SBATCH -p gpu
-##SBATCH -t 3:00:00
+##SBATCH -t 2:00:00
 
 id -a
 
@@ -28,7 +28,7 @@ python -u train.py  -hyper_data_path ./data/hyper_image.pt \
                     -batch_size 64 \
                     -epoch 50 \
                     -model PhamModel \
-                    -save_dir Pham-010119-test1 \
+                    -save_dir Pham-010119-test2 \
                     -report_frequency 5 \
                     -visdom_server http://taito-gpu.csc.fi \
                     -gpu 0

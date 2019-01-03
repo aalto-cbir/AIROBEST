@@ -160,7 +160,7 @@ def main():
         loss_cls = nn.BCELoss()
         loss_reg = nn.MSELoss()
     elif model_name == 'PhamModel':
-        model = PhamModel(num_bands, out_cls, out_reg, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
         loss_cls = nn.BCELoss()
         loss_reg = nn.MSELoss()
     elif model_name == 'LeeModel':
@@ -193,7 +193,8 @@ def main():
                             patch_size=options.patch_size,
                             shuffle=True)
 
-    modelTrain = ModelTrain(model, loss_cls, loss_reg)
+    print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
+    modelTrain = ModelTrain(model, loss_cls, loss_reg, metadata)
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
     modelTrain = modelTrain.to(device)
     optimizer = optim.Adam(modelTrain.parameters(), lr=options.lr)
