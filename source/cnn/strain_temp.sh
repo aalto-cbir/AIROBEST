@@ -20,7 +20,7 @@ module list
 
 python -u train.py  -hyper_data_path ./data/hyper_image.pt \
                     -src_norm_multiplier ./data/hyperspectral_src_l2norm_along_channel.pt \
-                    -tgt_path ./data/hyperspectral_tgt_full.pt \
+                    -tgt_path ./data/hyperspectral_tgt_full_normalized.pt \
                     -metadata ./data/metadata_full.pt \
                     -patch_size 27 \
                     -patch_stride 2 \

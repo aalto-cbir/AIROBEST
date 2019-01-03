@@ -79,6 +79,9 @@ def parse_args():
     train.add_argument('-visdom_server', type=str,
                        default='http://localhost',
                        help="Default visdom server")
+    train.add_argument('-use_gradnorm', type=bool,
+                       default=True,
+                       help="Enable gradient normalization for multi-task learning")
     opt = parser.parse_args()
 
     return opt
@@ -129,8 +132,9 @@ def main():
     visualize = options.use_visdom
     visualizer = None
     if visualize:
+        env_name = 'Train-{}'.format(options.save_dir)
         # 'server' option is needed because of this error: https://github.com/facebookresearch/visdom/issues/490
-        visualizer = visdom.Visdom(server=options.visdom_server, env='Train')
+        visualizer = visdom.Visdom(server=options.visdom_server, env=env_name)
         if not visualizer.check_connection:
             print("Visdom server is unreachable. Run `bash server.sh` to start the server.")
             visualizer = None

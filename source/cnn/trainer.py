@@ -29,6 +29,9 @@ class Trainer(object):
         val_losses = []
         val_accuracies = []
         loss_window = None
+        task_loss_window = None
+        task_weights_window = None
+        gradnorm_loss_window = None
 
         # set model in training mode
         self.modelTrain.train()
@@ -67,8 +70,6 @@ class Trainer(object):
 
                 # clear gradient of w_i(t) to update by GN loss
                 self.modelTrain.task_weights.grad.data.zero_()
-                # print('Grad: ', self.model.task_weights.grad)
-                self.options.use_gradnorm = True  # TODO: add config option
                 if self.options.use_gradnorm:
                     # get layer of shared weights
                     W = self.modelTrain.get_last_shared_layer()
@@ -100,12 +101,29 @@ class Trainer(object):
 
                 if train_step % self.options.report_frequency == 0:
                     avg_losses.append(np.mean(losses[-100:]))
-                    print('Training loss at step {}: {:.5f}, average loss: {:.5f}, task loss: {}, weights: {}'
+
+                    # renormalize
+                    normalize_coeff = self.modelTrain.task_count / torch.sum(self.modelTrain.task_weights.data, dim=0)
+                    self.modelTrain.task_weights.data = self.modelTrain.task_weights.data * normalize_coeff
+
+                    # record
+                    if torch.cuda.is_available():
+                        task_losses.append(task_loss.data.cpu().numpy())
+                        loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
+                        weights.append(self.modelTrain.task_weights.data.cpu().numpy())
+                        grad_norm_losses.append(grad_norm_loss.data.cpu().numpy())
+                    else:
+                        task_losses.append(task_loss.data.numpy())
+                        loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
+                        weights.append(self.modelTrain.task_weights.data.numpy())
+                        grad_norm_losses.append(grad_norm_loss.data.numpy())
+
+                    print('Step {:<7}: loss = {:.5f}, average loss = {:.5f}, task loss = {}, weights= {}'
                           .format(train_step,
                                   loss.item(),
                                   avg_losses[-1],
-                                  " ".join(map(str, task_loss.data.cpu().numpy())),
-                                  " ".join(map(str, self.modelTrain.task_weights.data.cpu().numpy()))))
+                                  " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())),
+                                  " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy()))))
 
                     if self.visualizer is not None:
                         loss_window = self.visualizer.line(
@@ -117,32 +135,46 @@ class Trainer(object):
                                   'ylabel': "Loss"}
                         )
 
+                        task_loss_window = self.visualizer.line(
+                            X=np.arange(0, train_step + 1, self.options.report_frequency),
+                            Y=task_losses,
+                            update='update' if task_loss_window else None,
+                            win=task_loss_window,
+                            opts={'title': "Training task losses",
+                                  'xlabel': "Step",
+                                  'ylabel': "Loss"}
+                        )
+
+                        task_weights_window = self.visualizer.line(
+                            X=np.arange(0, train_step + 1, self.options.report_frequency),
+                            Y=weights,
+                            update='update' if task_weights_window else None,
+                            win=task_weights_window,
+                            opts={'title': "Task weights",
+                                  'xlabel': "Step",
+                                  'ylabel': "Loss"}
+                        )
+
+                        gradnorm_loss_window = self.visualizer.line(
+                            X=np.arange(0, train_step + 1, self.options.report_frequency),
+                            Y=grad_norm_losses,
+                            update='update' if gradnorm_loss_window else None,
+                            win=gradnorm_loss_window,
+                            opts={'title': "Grad norm losses",
+                                  'xlabel': "Step",
+                                  'ylabel': "Loss"}
+                        )
+
                 train_step += 1
 
-            # renormalize
-            normalize_coeff = self.modelTrain.task_count / torch.sum(self.modelTrain.task_weights.data, dim=0)
-            self.modelTrain.task_weights.data = self.modelTrain.task_weights.data * normalize_coeff
-
-            # record
-            if torch.cuda.is_available():
-                task_losses.append(task_loss.data.cpu().numpy())
-                loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
-                weights.append(self.modelTrain.task_weights.data.cpu().numpy())
-                grad_norm_losses.append(grad_norm_loss.data.cpu().numpy())
-            else:
-                task_losses.append(task_loss.data.numpy())
-                loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
-                weights.append(self.modelTrain.task_weights.data.numpy())
-                grad_norm_losses.append(grad_norm_loss.data.numpy())
-
             epoch_loss = epoch_loss / len(train_loader)
-            print('Epoch {}: grad_norm_loss={:.5f}, total loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'.format(
+            print('Epoch {:<3}: GradNorm_loss={:.5f}, total loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'.format(
                 e,
                 grad_norm_loss.data.cpu().numpy(),
                 loss.item(),
-                " ".join(map(str, loss_ratio.data.cpu().numpy())),
-                " ".join(map(str, self.modelTrain.task_weights.data.cpu().numpy())),
-                " ".join(map(str, task_loss.data.cpu().numpy())))
+                " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
+                " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
+                " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
             )
             print('Average epoch loss: {:.5f}'.format(epoch_loss))
             metric = epoch_loss
@@ -171,9 +203,6 @@ class Trainer(object):
             if e % save_every == 0:
                 self.save_checkpoint(e)
 
-        task_losses = np.array(task_losses)
-        weights = np.array(weights)
-
     def validate(self, val_loader):
         sum_loss = 0
         N_samples = 0
@@ -194,7 +223,6 @@ class Trainer(object):
 
         # return average validation loss
         average_loss = sum_loss / len(val_loader)
-        # accuracy = n_correct * 100 / N_samples
         accuracies = sum_accuracy * 100 / len(val_loader.dataset)
         avg_accuracy = torch.mean(accuracies)
         return average_loss, avg_accuracy, accuracies
@@ -202,9 +230,9 @@ class Trainer(object):
     def compute_accuracy(self, predict, tgt):
         """
         Return number of correct prediction of each tgt label
-        :param predict:
-        :param tgt:
-        :return:
+        :param predict: tensor of predicted outputs
+        :param tgt: tensor of ground truth labels
+        :return: number of correct predictions for every single classification task
         """
 
         # reshape tensor in (*, n_cls) format
