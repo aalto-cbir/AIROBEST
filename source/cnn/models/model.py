@@ -190,20 +190,18 @@ class PhamModel(nn.Module):
 
         self.features_size = self._get_final_flattened_size()
         print("Feature size:", self.features_size)
-        self.fc_shared = nn.Linear(self.features_size, 2048)
+        self.fc_shared = nn.Linear(self.features_size, 1024)
 
         categorical = metadata['categorical']
         self.n_cls = len(categorical.keys())
         self.n_reg = out_reg
         for idx, (key, values) in enumerate(categorical.items()):
-            setattr(self, 'fc_cls_{}'.format(idx), torch.nn.Linear(2048, len(values)))
+            setattr(self, 'fc_cls_{}_1'.format(idx), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_cls_{}_2'.format(idx), torch.nn.Linear(200, len(values)))
 
         for i in range(out_reg):
-            setattr(self, 'fc_reg_{}'.format(i), torch.nn.Linear(2048, 1))
-        # self.fc_cls1 = nn.Linear(1024, 200)
-        # self.fc_cls2 = nn.Linear(200, out_cls)
-        # self.fc_reg1 = nn.Linear(2048, 200)
-        # self.fc_reg2 = nn.Linear(200, out_reg)
+            setattr(self, 'fc_reg_{}_1'.format(i), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_reg_{}_2'.format(i), torch.nn.Linear(200, 1))
 
         self.dropout = nn.Dropout(p=0.3)
 
@@ -236,18 +234,18 @@ class PhamModel(nn.Module):
 
         pred_cls = torch.tensor([]).cuda()
         # for classification task
-        # x_cls = F.relu(self.fc_cls1(x))
-        # x_cls = F.sigmoid(self.fc_cls2(x_cls))
         for i in range(self.n_cls):
-            layer = getattr(self, 'fc_cls_{}'.format(i))
-            pred_cls = torch.cat((pred_cls, F.softmax(layer(x))), 1)
+            layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
+            x_cls = F.relu(layer1(x))
+            pred_cls = torch.cat((pred_cls, F.sigmoid(layer2(x_cls))), 1)
         # for regression task
-        # x_reg = F.relu(self.fc_reg1(x))
-        # x_reg = self.fc_reg2(x_reg)
         pred_reg = torch.tensor([]).cuda()
         for i in range(self.n_reg):
-            layer = getattr(self, 'fc_reg_{}'.format(i))
-            pred_reg = torch.cat((pred_reg, layer(x)), 1)
+            layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
+            x_reg = F.relu(layer1(x))
+            pred_reg = torch.cat((pred_reg, layer2(x_reg)), 1)
 
         return pred_cls, pred_reg
 
@@ -263,12 +261,6 @@ class ModelTrain(nn.Module):
         self.categorical = metadata['categorical']
 
     def forward(self, src, tgt_cls, tgt_reg):
-        # pred_cls, pred_reg = self.model(src)
-        # loss_cls = self.criterion_cls(pred_cls, tgt_cls)
-        # loss_reg = self.criterion_reg(pred_reg, tgt_reg)
-        # task_loss = torch.stack([loss_cls, loss_reg])
-
-        # return task_loss, pred_cls, pred_reg
         task_loss = []
         pred_cls, pred_reg = self.model(src)
         start = 0

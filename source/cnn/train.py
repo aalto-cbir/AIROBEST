@@ -79,9 +79,9 @@ def parse_args():
     train.add_argument('-visdom_server', type=str,
                        default='http://localhost',
                        help="Default visdom server")
-    train.add_argument('-use_gradnorm', type=bool,
-                       default=True,
-                       help="Enable gradient normalization for multi-task learning")
+    train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights'],
+                       default='grad_norm',
+                       help="Specify loss balancing method for multi-task learning")
     opt = parser.parse_args()
 
     return opt
@@ -167,6 +167,7 @@ def main():
         model = PhamModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
         loss_cls = nn.BCELoss()
         loss_reg = nn.MSELoss()
+        # loss_reg = nn.L1Loss()
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, out_cls, out_reg)
         loss_cls = nn.BCELoss()
@@ -208,7 +209,6 @@ def main():
     if checkpoint is not None:
         modelTrain.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        setattr(options, 'start_epoch', checkpoint['epoch'])
 
     with torch.no_grad():
         print('Model summary: ')
@@ -227,7 +227,7 @@ def main():
     print('Scheduler:', scheduler.__dict__)
 
     trainer = Trainer(modelTrain, optimizer, loss_cls, loss_reg, scheduler,
-                      device, visualizer, metadata, options)
+                      device, visualizer, metadata, options, checkpoint)
     trainer.train(train_loader, val_loader)
     print('End training...')
 

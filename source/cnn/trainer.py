@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 class Trainer(object):
     def __init__(self, model, optimizer, criterion_cls, criterion_reg, scheduler, device,
-                 visualizer, metadata, options):
+                 visualizer, metadata, options, checkpoint=None):
         self.modelTrain = model
         self.optimizer = optimizer
         self.criterion_cls = criterion_cls
@@ -18,12 +18,18 @@ class Trainer(object):
         self.metadata = metadata
         self.categorical = metadata['categorical']
         self.visualizer = visualizer
+        self.checkpoint = checkpoint
 
     def train(self, train_loader, val_loader):
         epoch = self.options.epoch
-        start_epoch = self.options.start_epoch + 1 if 'start_epoch' in self.options else 1
+        if self.checkpoint:
+            start_epoch = self.checkpoint.epoch + 1
+            train_step = self.checkpoint.train_step + 1
+            initial_task_loss = self.checkpoint.initial_task_loss
+        else:
+            start_epoch = 1
+            train_step = 0
         save_every = 1  # specify number of epochs to save model
-        train_step = 0
         sum_loss = 0.0
         avg_losses = []
         val_losses = []
@@ -56,8 +62,7 @@ class Trainer(object):
                 weighted_task_loss = self.modelTrain.task_weights * task_loss
                 loss = torch.sum(weighted_task_loss)
 
-                # TODO: reload from checkpoint
-                if e == 1:
+                if train_step == 0:
                     initial_task_loss = task_loss.data  # set L(0)
                     # print('init_task_loss', initial_task_loss)
 
@@ -70,7 +75,7 @@ class Trainer(object):
 
                 # clear gradient of w_i(t) to update by GN loss
                 self.modelTrain.task_weights.grad.data.zero_()
-                if self.options.use_gradnorm:
+                if self.options.loss_balancing == 'grad_norm':
                     # get layer of shared weights
                     W = self.modelTrain.get_last_shared_layer()
 
@@ -96,15 +101,18 @@ class Trainer(object):
                     # compute the gradient for the weights
                     self.modelTrain.task_weights.grad = torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
                     # grad_norm_loss.backward()
+                else:
+                    grad_norm_loss = torch.Tensor([0.0], device=self.device)
+                    loss_ratio = torch.Tensor([0] * len(task_loss), device=self.device)
 
                 self.optimizer.step()
 
+                # renormalize
+                normalize_coeff = self.modelTrain.task_count / torch.sum(self.modelTrain.task_weights.data, dim=0)
+                self.modelTrain.task_weights.data = self.modelTrain.task_weights.data * normalize_coeff
+
                 if train_step % self.options.report_frequency == 0:
                     avg_losses.append(np.mean(losses[-100:]))
-
-                    # renormalize
-                    normalize_coeff = self.modelTrain.task_count / torch.sum(self.modelTrain.task_weights.data, dim=0)
-                    self.modelTrain.task_weights.data = self.modelTrain.task_weights.data * normalize_coeff
 
                     # record
                     if torch.cuda.is_available():
@@ -131,7 +139,8 @@ class Trainer(object):
                             Y=avg_losses,
                             update='update' if loss_window else None,
                             win=loss_window,
-                            opts={'title': "Training loss", 'xlabel': "Step",
+                            opts={'title': "Training loss",
+                                  'xlabel': "Step",
                                   'ylabel': "Loss"}
                         )
 
@@ -142,7 +151,8 @@ class Trainer(object):
                             win=task_loss_window,
                             opts={'title': "Training task losses",
                                   'xlabel': "Step",
-                                  'ylabel': "Loss"}
+                                  'ylabel': "Loss",
+                                  'legend': range(self.modelTrain.task_count)}
                         )
 
                         task_weights_window = self.visualizer.line(
@@ -152,7 +162,8 @@ class Trainer(object):
                             win=task_weights_window,
                             opts={'title': "Task weights",
                                   'xlabel': "Step",
-                                  'ylabel': "Loss"}
+                                  'ylabel': "Loss",
+                                  'legend': range(self.modelTrain.task_count)}
                         )
 
                         gradnorm_loss_window = self.visualizer.line(
@@ -201,7 +212,7 @@ class Trainer(object):
                     break
             print('Current learning rate: {}'.format(lr))
             if e % save_every == 0:
-                self.save_checkpoint(e)
+                self.save_checkpoint(e, train_step, initial_task_loss)
 
     def validate(self, val_loader):
         sum_loss = 0
@@ -257,9 +268,11 @@ class Trainer(object):
 
         return n_correct
 
-    def save_checkpoint(self, epoch):
+    def save_checkpoint(self, epoch, train_step, initial_task_loss):
         """
         Saving model's state dict
+        :param initial_task_loss: tensor of first step's task loss
+        :param train_step: the last training step when model is saved
         :param epoch: the epoch when model is saved
         :return:
         """
@@ -270,6 +283,8 @@ class Trainer(object):
 
         state = {
             'epoch': epoch,
+            'train_step': train_step,
+            'initial_task_loss': initial_task_loss,
             'model': self.modelTrain.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'options': self.options
