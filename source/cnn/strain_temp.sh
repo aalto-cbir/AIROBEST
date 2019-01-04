@@ -28,7 +28,7 @@ python -u train.py  -hyper_data_path ./data/hyper_image.pt \
                     -batch_size 64 \
                     -epoch 50 \
                     -model PhamModel \
-                    -save_dir Pham-030119-test6 \
+                    -save_dir Pham-030119-test7 \
                     -report_frequency 5 \
                     -loss_balancing grad_norm \
                     -visdom_server http://taito-gpu.csc.fi \

@@ -23,17 +23,20 @@ class Trainer(object):
     def train(self, train_loader, val_loader):
         epoch = self.options.epoch
         if self.checkpoint:
-            start_epoch = self.checkpoint.epoch + 1
-            train_step = self.checkpoint.train_step + 1
-            initial_task_loss = self.checkpoint.initial_task_loss
+            start_epoch = self.checkpoint['epoch'] + 1
+            train_step = self.checkpoint['train_step'] + 1
+            start_step = train_step
+            initial_task_loss = self.checkpoint['initial_task_loss']
         else:
             start_epoch = 1
             train_step = 0
+            start_step = 0
         save_every = 1  # specify number of epochs to save model
         sum_loss = 0.0
         avg_losses = []
         val_losses = []
         val_accuracies = []
+
         loss_window = None
         task_loss_window = None
         task_weights_window = None
@@ -135,7 +138,7 @@ class Trainer(object):
 
                     if self.visualizer is not None:
                         loss_window = self.visualizer.line(
-                            X=np.arange(0, train_step + 1, self.options.report_frequency),
+                            X=np.arange(start_step, train_step + 1, self.options.report_frequency),
                             Y=avg_losses,
                             update='update' if loss_window else None,
                             win=loss_window,
@@ -145,7 +148,7 @@ class Trainer(object):
                         )
 
                         task_loss_window = self.visualizer.line(
-                            X=np.arange(0, train_step + 1, self.options.report_frequency),
+                            X=np.arange(start_step, train_step + 1, self.options.report_frequency),
                             Y=task_losses,
                             update='update' if task_loss_window else None,
                             win=task_loss_window,
@@ -156,7 +159,7 @@ class Trainer(object):
                         )
 
                         task_weights_window = self.visualizer.line(
-                            X=np.arange(0, train_step + 1, self.options.report_frequency),
+                            X=np.arange(start_step, train_step + 1, self.options.report_frequency),
                             Y=weights,
                             update='update' if task_weights_window else None,
                             win=task_weights_window,
@@ -167,7 +170,7 @@ class Trainer(object):
                         )
 
                         gradnorm_loss_window = self.visualizer.line(
-                            X=np.arange(0, train_step + 1, self.options.report_frequency),
+                            X=np.arange(start_step, train_step + 1, self.options.report_frequency),
                             Y=grad_norm_losses,
                             update='update' if gradnorm_loss_window else None,
                             win=gradnorm_loss_window,
