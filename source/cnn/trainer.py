@@ -152,7 +152,7 @@ class Trainer(object):
                             opts={'title': "Training task losses",
                                   'xlabel': "Step",
                                   'ylabel': "Loss",
-                                  'legend': range(self.modelTrain.task_count)}
+                                  'legend': list(range(self.modelTrain.task_count))}
                         )
 
                         task_weights_window = self.visualizer.line(
@@ -163,7 +163,7 @@ class Trainer(object):
                             opts={'title': "Task weights",
                                   'xlabel': "Step",
                                   'ylabel': "Loss",
-                                  'legend': range(self.modelTrain.task_count)}
+                                  'legend': list(range(self.modelTrain.task_count))}
                         )
 
                         gradnorm_loss_window = self.visualizer.line(
