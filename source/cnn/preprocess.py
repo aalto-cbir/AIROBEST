@@ -38,6 +38,10 @@ def parse_args():
                         required=False, type=str,
                         default='/proj/deepsat/hyperspectral/Titta2013.txt',
                         help='Path to human verified data (Titta points)')
+    parser.add_argument('-save_dir',
+                        required=False, type=str,
+                        default='mosaic',
+                        help='Directory to save all generated files')
     parser.add_argument('-src_file_name',
                         required=False, type=str,
                         default='hyperspectral_src',
@@ -237,23 +241,24 @@ def main():
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
     hyper_labels, metadata = process_labels(hyper_labels)
 
-    if not os.path.isdir('./data'):
-        os.makedirs('./data')
+    path = './data/%s' % options.save_dir
+    if not os.path.exists(path):
+        os.makedirs(path)
 
-    src_name = './data/%s_%s.pt' % (options.src_file_name, options.normalize_method)
-    tgt_name = './data/%s.pt' % options.tgt_file_name
-    metadata_name = './data/%s.pt' % options.metadata_file_name
+    image_norm_name = '%s/image_norm_%s.pt' % (path, options.normalize_method)
+    tgt_name = '%s/%s.pt' % (path, options.tgt_file_name)
+    metadata_name = '%s/%s.pt' % (path, options.metadata_file_name)
+    src_name = '%s/%s.pt' % (path, options.src_file_name)
 
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
-    torch.save(torch.from_numpy(hyper_image), './data/hyper_image.pt')
+    torch.save(torch.from_numpy(hyper_image), src_name)
     print('Target file has shapes {}'.format(hyper_labels.shape))
     del hyper_labels, forest_labels, forest_data
 
-    wavelength_list = hyper_data.metadata['wavelength']
-    wavelength = np.array(wavelength_list, dtype=float)
+    wavelength = np.array(hyper_data.metadata['wavelength'], dtype=float)
 
-    # open_as_rgb(hyper_image, wavelength, options)
+    open_as_rgb(hyper_image, wavelength, path)
 
     R, C, B = hyper_image.shape
     # storing L2 norm of the image based on normalization method
@@ -266,7 +271,7 @@ def main():
         norm = np.linalg.norm(hyper_image, axis=(0, 1))
 
     norm[norm > 0] = 1.0 / norm[norm > 0]  # invert positive values
-    torch.save(torch.from_numpy(norm), src_name)
+    torch.save(torch.from_numpy(norm), image_norm_name)
 
     print('Source file has shapes {}'.format(norm.shape))
     print('Processed files are stored under "./data" directory')

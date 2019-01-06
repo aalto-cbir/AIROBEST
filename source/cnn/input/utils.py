@@ -130,15 +130,18 @@ def visualize_label(hyper_labels):
     plt.show()
 
 
-def open_as_rgb(hyper_image, wavelength, options):
-    # if not visualizer:
-    #     return
-
+def open_as_rgb(hyper_image, wavelength, path):
+    """
+    Save hyperspectral in rgb format
+    :param hyper_image: hyperspectral image
+    :param wavelength: list of wavelengths for each spectral band
+    :param path: path to save the image
+    :return:
+    """
     i_r = abs(wavelength - 0.660).argmin()  # red band, the closest to 660 nm
     i_g = abs(wavelength - 0.550).argmin()  # green, closest band to 550 nm
     i_b = abs(wavelength - 0.490).argmin()  # blue, closest to 490 nm
 
     hyp_rgb = hyper_image[:, :, [i_r, i_g, i_b]] / 8
-    hyp_rgb = np.asarray(np.copy(hyp_rgb).transpose((2, 0, 1)), dtype='float32')
-    # visualizer.image(hyp_rgb)
-    # Image.fromarray(hyp_rgb.astype('uint8')).save('./checkpoint/{}'.format(options.save_dir))
+    # hyp_rgb = np.asarray(np.copy(hyp_rgb).transpose((2, 0, 1)), dtype='float32')
+    Image.fromarray(hyp_rgb.astype('uint8')).save('%s/rgb_image.png' % path)

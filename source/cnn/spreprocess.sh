@@ -19,9 +19,10 @@ module load python-env/intelpython3.6-2018.3 gcc/5.4.0
 module list
 
 
-srun python -u preprocess.py    -src_file_name hyperspectral_src \
-                                -tgt_file_name hyperspectral_tgt_full_normalized \
-                                -metadata_file_name metadata_full \
+srun python -u preprocess.py    -save_dir mosaic \
+                                -src_file_name hyperspectral_src \
+                                -tgt_file_name hyperspectral_tgt_normalized \
+                                -metadata_file_name metadata \
                                 -normalize_method l2norm_along_channel \
                                 -hyper_data_path /proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr \
                                 -forest_data_path /proj/deepsat/hyperspectral/forestdata.hdr

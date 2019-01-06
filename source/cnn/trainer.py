@@ -181,15 +181,18 @@ class Trainer(object):
 
                 train_step += 1
 
+            if e % save_every == 0:
+                self.save_checkpoint(e, train_step, initial_task_loss)
             epoch_loss = epoch_loss / len(train_loader)
-            print('Epoch {:<3}: GradNorm_loss={:.5f}, total loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'.format(
-                e,
-                grad_norm_loss.data.cpu().numpy(),
-                loss.item(),
-                " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
-                " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
-                " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
-            )
+            if self.options.loss_balancing == 'grad_norm':
+                print('Epoch {:<3}: Total loss={:.5f}, loss_ratio={}, gradNorm_loss={:.5f}, weights={}, task_loss={}'.format(
+                    e,
+                    loss.item(),
+                    grad_norm_loss.data.cpu().numpy(),
+                    " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
+                    " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
+                    " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
+                )
             print('Average epoch loss: {:.5f}'.format(epoch_loss))
             metric = epoch_loss
             if val_loader is not None:
@@ -214,8 +217,6 @@ class Trainer(object):
                     lr = param_group['lr']
                     break
             print('Current learning rate: {}'.format(lr))
-            if e % save_every == 0:
-                self.save_checkpoint(e, train_step, initial_task_loss)
 
     def validate(self, val_loader):
         sum_loss = 0
