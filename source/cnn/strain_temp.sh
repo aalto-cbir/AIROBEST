@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
 #SBATCH -J train
-#SBATCH --mem-per-cpu 100000
-#SBATCH --gres=gpu:k80:1
-#SBATCH -p gputest
-#SBATCH -t 0:15:00
+#SBATCH --mem-per-cpu 10000
+##SBATCH --gres=gpu:k80:1
+##SBATCH -p gputest
+##SBATCH -t 0:15:00
 
-##SBATCH --gres=gpu:p100:1
-##SBATCH -p gpu
-##SBATCH -t 3:00:00
+#SBATCH --gres=gpu:p100:1
+#SBATCH -p gpu
+#SBATCH -t 1:00:00
 
 id -a
 
@@ -25,12 +25,12 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -metadata ${DATA_DIR}/metadata.pt \
                     -patch_size 27 \
                     -patch_stride 2 \
-                    -lr 0.0001 \
+                    -lr 0.001 \
                     -batch_size 64 \
-                    -epoch 50 \
+                    -epoch 100 \
                     -model PhamModel \
-                    -save_dir Pham-060119-test1 \
-                    -report_frequency 5 \
+                    -save_dir Pham-060119-test2 \
+                    -report_frequency 10 \
                     -loss_balancing equal_weights \
                     -visdom_server http://taito-gpu.csc.fi \
                     -gpu 0

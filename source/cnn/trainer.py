@@ -35,12 +35,14 @@ class Trainer(object):
         sum_loss = 0.0
         avg_losses = []
         val_losses = []
-        val_accuracies = []
+        train_accuracies = torch.Tensor([0.0] * len(self.categorical))
+        accuracy_list = []
 
         loss_window = None
         task_loss_window = None
         task_weights_window = None
         gradnorm_loss_window = None
+        accuracy_window = None
 
         # set model in training mode
         self.modelTrain.train()
@@ -61,7 +63,7 @@ class Trainer(object):
                 tgt_cls = tgt_cls.to(self.device, dtype=torch.float32)
                 tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
 
-                task_loss, _, _ = self.modelTrain(src, tgt_cls, tgt_reg)
+                task_loss, pred_cls, _ = self.modelTrain(src, tgt_cls, tgt_reg)
                 weighted_task_loss = self.modelTrain.task_weights * task_loss
                 loss = torch.sum(weighted_task_loss)
 
@@ -72,6 +74,9 @@ class Trainer(object):
                 sum_loss += loss.item()
                 epoch_loss += loss.item()
                 losses.append(loss.item())
+
+                # compute accuracy
+                train_accuracies += self.compute_accuracy(pred_cls, tgt_cls)
 
                 self.optimizer.zero_grad()
                 loss.backward(retain_graph=True)
@@ -193,16 +198,41 @@ class Trainer(object):
                     " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
                     " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
                 )
-            print('Average epoch loss: {:.5f}'.format(epoch_loss))
+
+            train_accuracies = train_accuracies * 100 / len(train_loader.dataset)
+            train_avg_accuracy = torch.mean(train_accuracies)
+            accuracies = torch.cat((train_accuracies, train_avg_accuracy.view(1)))
+            accuracy_legend = ['train_{}'.format(i) for i in range(len(train_accuracies))]
+            accuracy_legend.append('train_avg')
+            print('Average epoch loss={:.5f}, avg train accuracy={:.5f}, train accuracies={}'.format(
+                epoch_loss,
+                train_avg_accuracy,
+                train_accuracies
+            ))
+
             metric = epoch_loss
             if val_loader is not None:
-                val_loss, val_avg_accuracy, val_cls_accuracies = self.validate(val_loader)
+                val_loss, val_avg_accuracy, val_accuracies = self.validate(val_loader)
                 print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
-                      .format(val_loss, val_avg_accuracy.data.numpy(), val_cls_accuracies.data.numpy()))
+                      .format(val_loss, val_avg_accuracy.data.numpy(), val_accuracies.data.numpy()))
                 val_losses.append(val_loss)
-                val_accuracies.append(val_avg_accuracy)
+                accuracies = torch.cat((accuracies, val_accuracies, val_avg_accuracy.view(1)))
+                accuracy_legend = accuracy_legend + ['val_{}'.format(i) for i in range(len(val_accuracies))]
+                accuracy_legend.append('val_avg')
                 # metric = val_loss
                 metric = -val_avg_accuracy
+
+            accuracy_list.append(accuracies.data.numpy())
+            accuracy_window = self.visualizer.line(
+                X=np.arange(start_epoch, e + 1, 1),
+                Y=accuracy_list,
+                update='update' if accuracy_window else None,
+                win=accuracy_window,
+                opts={'title': "Training and Validation accuracies",
+                      'xlabel': "Epoch",
+                      'ylabel': "Accuracies",
+                      'legend': accuracy_legend}
+            )
 
             if isinstance(self.scheduler, ReduceLROnPlateau):
                 self.scheduler.step(metric)
@@ -221,7 +251,7 @@ class Trainer(object):
     def validate(self, val_loader):
         sum_loss = 0
         N_samples = 0
-        sum_accuracy = torch.Tensor([0.0] * len(self.categorical))
+        val_accuracies = torch.Tensor([0.0] * len(self.categorical))
         for idx, (src, tgt_cls, tgt_reg) in enumerate(val_loader):
             src = src.to(self.device, dtype=torch.float32)
             tgt_cls = tgt_cls.to(self.device, dtype=torch.float32)
@@ -234,13 +264,13 @@ class Trainer(object):
                 loss = torch.sum(weighted_task_loss)
 
                 sum_loss += loss.item()
-                sum_accuracy += self.compute_accuracy(pred_cls, tgt_cls)
+                val_accuracies += self.compute_accuracy(pred_cls, tgt_cls)
 
         # return average validation loss
         average_loss = sum_loss / len(val_loader)
-        accuracies = sum_accuracy * 100 / len(val_loader.dataset)
-        avg_accuracy = torch.mean(accuracies)
-        return average_loss, avg_accuracy, accuracies
+        val_accuracies = val_accuracies * 100 / len(val_loader.dataset)
+        avg_accuracy = torch.mean(val_accuracies)
+        return average_loss, avg_accuracy, val_accuracies
 
     def compute_accuracy(self, predict, tgt):
         """
