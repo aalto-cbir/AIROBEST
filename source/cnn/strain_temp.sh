@@ -17,18 +17,19 @@ module load intelconda/python3.6-2018.3
 module list
 
 #env
+DATA_DIR=./data/subsetA/
 
-python -u train.py  -hyper_data_path ./data/hyper_image.pt \
-                    -src_norm_multiplier ./data/hyperspectral_src_l2norm_along_channel.pt \
-                    -tgt_path ./data/hyperspectral_tgt_full_normalized.pt \
-                    -metadata ./data/metadata_full.pt \
+python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
+                    -src_norm_multiplier ${DATA_DIR}/image_norm_l2norm_along_channel.pt \
+                    -tgt_path ${DATA_DIR}/hyperspectral_tgt_normalized.pt \
+                    -metadata ${DATA_DIR}/metadata.pt \
                     -patch_size 27 \
                     -patch_stride 2 \
                     -lr 0.0001 \
                     -batch_size 64 \
                     -epoch 50 \
                     -model PhamModel \
-                    -save_dir Pham-050119-test1 \
+                    -save_dir Pham-060119-test1 \
                     -report_frequency 5 \
                     -loss_balancing equal_weights \
                     -visdom_server http://taito-gpu.csc.fi \
