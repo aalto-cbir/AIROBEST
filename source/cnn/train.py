@@ -27,19 +27,19 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-hyper_data_path',
                         required=False, type=str,
-                        default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
+                        default='./data/mosaic/hyperspectral_src.pt',
                         help='Path to hyperspectral data')
     parser.add_argument('-src_norm_multiplier',
                         required=False, type=str,
-                        default='../../data/hyperspectral_src_l2norm.pt',
+                        default='./data/mosaic/image_norm_l2norm_along_channel.pt',
                         help='Path to file containing inverted norm (along color channel) of the source image')
     parser.add_argument('-tgt_path',
                         required=False, type=str,
-                        default='../../data/hyperspectral_tgt.pt',
+                        default='./data/mosaic/hyperspectral_tgt_normalized.pt',
                         help='Path to training labels')
     parser.add_argument('-metadata',
                         type=str,
-                        default='../../data/metadata.pt',
+                        default='./data/mosaic/metadata.pt',
                         help="Path to training metadata (generated during preprocessing stage)")
     parser.add_argument('-gpu',
                         type=int, default=-1,

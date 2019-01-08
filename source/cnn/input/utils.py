@@ -85,6 +85,7 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
     train = []
     val = []
     coords = []
+    random_state = 101
     if mode == 'grid':
         stride = patch_size  # overwrite striding value so that the patches are not overlapping
     # reserve 20% in the middle part of the hyperspectral image for validation
@@ -103,13 +104,13 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
                             val.append((i, j))
 
     if mode == 'random' or mode == 'grid':
-        # train, test = train_test_split(coords, train_size=0.8, random_state=123, shuffle=True)
-        # train, val = train_test_split(train, train_size=0.9, random_state=123, shuffle=True)
-        train, val = train_test_split(coords, train_size=0.9, random_state=123, shuffle=True)
+        # train, test = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
+        # train, val = train_test_split(train, train_size=0.9, random_state=random_state, shuffle=True)
+        train, val = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
     elif mode == 'split':
-        np.random.seed(123)
+        np.random.seed(random_state)
         np.random.shuffle(train)
-        np.random.seed(123)
+        np.random.seed(random_state)
         np.random.shuffle(val)
 
     print('Number of training pixels: %d, val pixels: %d' % (len(train), len(val)))

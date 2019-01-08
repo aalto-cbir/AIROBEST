@@ -23,6 +23,7 @@ class HypDataset(data.Dataset):
         """
         self.hyper_image = hyper_image
         self.norm_inv = norm_inv
+        self.img_min, self.img_max = torch.min(hyper_image).float(), torch.max(hyper_image).float()
         self.hyper_labels_cls = hyper_labels_cls
         self.hyper_labels_reg = hyper_labels_reg
         self.patch_size = patch_size
@@ -44,9 +45,12 @@ class HypDataset(data.Dataset):
         row, col = self.coords[idx]
 
         src = get_patch(self.hyper_image, row, col, self.patch_size).float()
-        src_norm_inv = get_patch(self.norm_inv, row, col, self.patch_size)
-        src_norm_inv = torch.unsqueeze(src_norm_inv, -1)
-        src = src * src_norm_inv
+        if self.norm_inv is not None:
+            src_norm_inv = get_patch(self.norm_inv, row, col, self.patch_size)
+            src_norm_inv = torch.unsqueeze(src_norm_inv, -1)
+            src = src * src_norm_inv
+        else:
+            src = (src - self.img_min) / (self.img_max - self.img_min)
         if self.model_name == 'LeeModel':
             tgt_cls = get_patch(self.hyper_labels_cls, row, col, self.patch_size)
             tgt_cls = tgt_cls.permute(2, 0, 1)

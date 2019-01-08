@@ -190,7 +190,7 @@ class Trainer(object):
                 self.save_checkpoint(e, train_step, initial_task_loss)
             epoch_loss = epoch_loss / len(train_loader)
             if self.options.loss_balancing == 'grad_norm':
-                print('Epoch {:<3}: Total loss={:.5f}, loss_ratio={}, gradNorm_loss={:.5f}, weights={}, task_loss={}'.format(
+                print('Epoch {:<3}: Total loss={:.5f}, gradNorm_loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'.format(
                     e,
                     loss.item(),
                     grad_norm_loss.data.cpu().numpy(),
