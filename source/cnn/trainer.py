@@ -3,6 +3,7 @@ import os
 import torch
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from sklearn.metrics import confusion_matrix
 
 
 class Trainer(object):
@@ -43,9 +44,8 @@ class Trainer(object):
         task_weights_window = None
         gradnorm_loss_window = None
         accuracy_window = None
-
-        # set model in training mode
-        self.modelTrain.train()
+        # TODO: get from metadata
+        label_names = ['Fertility class', 'Soil type', 'Development class', 'Main tree species']
 
         losses = []
 
@@ -56,6 +56,9 @@ class Trainer(object):
 
         print('Start training from epoch: ', start_epoch)
         for e in range(start_epoch, epoch + 1):
+            # set model in training mode
+            self.modelTrain.train()
+            self.modelTrain.model.train()
             epoch_loss = 0.0
 
             for idx, (src, tgt_cls, tgt_reg) in enumerate(train_loader):
@@ -76,7 +79,8 @@ class Trainer(object):
                 losses.append(loss.item())
 
                 # compute accuracy
-                train_accuracies += self.compute_accuracy(pred_cls, tgt_cls)
+                batch_train_accuracies, _, _ = self.compute_accuracy(pred_cls, tgt_cls)
+                train_accuracies += batch_train_accuracies
 
                 self.optimizer.zero_grad()
                 loss.backward(retain_graph=True)
@@ -212,7 +216,7 @@ class Trainer(object):
 
             metric = epoch_loss
             if val_loader is not None:
-                val_loss, val_avg_accuracy, val_accuracies = self.validate(val_loader)
+                val_loss, val_avg_accuracy, val_accuracies, conf_matrices = self.validate(val_loader)
                 print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
                       .format(val_loss, val_avg_accuracy.data.numpy(), val_accuracies.data.numpy()))
                 val_losses.append(val_loss)
@@ -221,6 +225,12 @@ class Trainer(object):
                 accuracy_legend.append('val_avg')
                 # metric = val_loss
                 metric = -val_avg_accuracy
+
+                if e % 5 == 1:
+                    for i in range(len(conf_matrices)):
+                        self.visualizer.heatmap(conf_matrices[i], opts={
+                            'title': '{} at epoch {}'.format(label_names[i], e)
+                        })
 
             accuracy_list.append(accuracies.data.numpy())
             accuracy_window = self.visualizer.line(
@@ -249,9 +259,15 @@ class Trainer(object):
             print('Current learning rate: {}'.format(lr))
 
     def validate(self, val_loader):
+        # set model in validation mode
+        self.modelTrain.eval()
+        self.modelTrain.model.eval()
+
         sum_loss = 0
         N_samples = 0
-        val_accuracies = torch.Tensor([0.0] * len(self.categorical))
+        val_accuracies = torch.tensor([0.0] * len(self.categorical))
+        pred_indices = torch.tensor([], dtype=torch.long, device=self.device)
+        tgt_indices = torch.tensor([], dtype=torch.long, device=self.device)
         for idx, (src, tgt_cls, tgt_reg) in enumerate(val_loader):
             src = src.to(self.device, dtype=torch.float32)
             tgt_cls = tgt_cls.to(self.device, dtype=torch.float32)
@@ -264,13 +280,19 @@ class Trainer(object):
                 loss = torch.sum(weighted_task_loss)
 
                 sum_loss += loss.item()
-                val_accuracies += self.compute_accuracy(pred_cls, tgt_cls)
+                batch_accuracies, batch_pred_indices, batch_tgt_indices = self.compute_accuracy(pred_cls, tgt_cls)
+                val_accuracies += batch_accuracies
+                pred_indices = torch.cat((pred_indices, batch_pred_indices), dim=0)
+                tgt_indices = torch.cat((tgt_indices, batch_tgt_indices), dim=0)
 
         # return average validation loss
         average_loss = sum_loss / len(val_loader)
         val_accuracies = val_accuracies * 100 / len(val_loader.dataset)
         avg_accuracy = torch.mean(val_accuracies)
-        return average_loss, avg_accuracy, val_accuracies
+        conf_matrices = []
+        for i in range(tgt_indices.shape[-1]):
+            conf_matrices.append(confusion_matrix(tgt_indices[:, i], pred_indices[:, i]))
+        return average_loss, avg_accuracy, val_accuracies, conf_matrices
 
     def compute_accuracy(self, predict, tgt):
         """
@@ -287,20 +309,25 @@ class Trainer(object):
         predict = predict.view(-1, n_cls)
         tgt = tgt.view(-1, n_cls)
         #####
-
+        pred_indices = []
+        tgt_indices = []
         n_correct = torch.Tensor([0.0] * len(self.categorical))
         num_classes = 0
         for idx, (key, values) in enumerate(self.categorical.items()):
             count = len(values)
             pred_class = predict[:, num_classes:(num_classes + count)]
             tgt_class = tgt[:, num_classes:(num_classes + count)]
-            pred_indices = pred_class.argmax(-1)  # get indices of max values in each row
-            tgt_indices = tgt_class.argmax(-1)
-            true_positive = torch.sum(pred_indices == tgt_indices).item()
+            pred_index = pred_class.argmax(-1)  # get indices of max values in each row
+            tgt_index = tgt_class.argmax(-1)
+            pred_indices.append(pred_index)
+            tgt_indices.append(tgt_index)
+            true_positive = torch.sum(pred_index == tgt_index).item()
             n_correct[idx] += true_positive
             num_classes += count
 
-        return n_correct
+        pred_indices = torch.stack(pred_indices, dim=1)
+        tgt_indices = torch.stack(tgt_indices, dim=1)
+        return n_correct, pred_indices, tgt_indices
 
     def save_checkpoint(self, epoch, train_step, initial_task_loss):
         """

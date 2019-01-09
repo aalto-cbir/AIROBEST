@@ -140,6 +140,7 @@ def main():
             visualizer = None
 
     metadata = get_input_data(options.metadata)
+    print('Metadata values', metadata)
     out_cls = metadata['num_classes']
     assert out_cls > 0, 'Number of classes has to be > 0'
 

@@ -13,7 +13,7 @@ import spectral
 import torch
 import matplotlib.pyplot as plt
 
-from input.utils import hyp2for, world2envi_p, open_as_rgb
+from input.utils import hyp2for, world2envi_p, save_as_rgb
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
@@ -269,6 +269,7 @@ def main():
     metadata_name = '%s/%s.pt' % (save_path, options.metadata_file_name)
     src_name = '%s/%s.pt' % (save_path, options.src_file_name)
 
+    print('Metadata values: ', metadata)
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
     torch.save(torch.from_numpy(hyper_image), src_name)
@@ -277,7 +278,7 @@ def main():
 
     wavelength = np.array(hyper_data.metadata['wavelength'], dtype=float)
 
-    open_as_rgb(hyper_image, wavelength, save_path)
+    save_as_rgb(hyper_image, wavelength, save_path)
 
     R, C, B = hyper_image.shape
     # storing L2 norm of the image based on normalization method

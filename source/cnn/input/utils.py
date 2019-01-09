@@ -131,7 +131,7 @@ def visualize_label(hyper_labels):
     plt.show()
 
 
-def open_as_rgb(hyper_image, wavelength, path):
+def save_as_rgb(hyper_image, wavelength, path):
     """
     Save hyperspectral in rgb format
     :param hyper_image: hyperspectral image
@@ -143,6 +143,7 @@ def open_as_rgb(hyper_image, wavelength, path):
     i_g = abs(wavelength - 0.550).argmin()  # green, closest band to 550 nm
     i_b = abs(wavelength - 0.490).argmin()  # blue, closest to 490 nm
 
-    hyp_rgb = hyper_image[:, :, [i_r, i_g, i_b]] / 8
+    hyp_rgb = hyper_image[:, :, [i_r, i_g, i_b]]
+    hyp_rgb = hyp_rgb * 255 / np.max(hyp_rgb)
     # hyp_rgb = np.asarray(np.copy(hyp_rgb).transpose((2, 0, 1)), dtype='float32')
     Image.fromarray(hyp_rgb.astype('uint8')).save('%s/rgb_image.png' % path)
