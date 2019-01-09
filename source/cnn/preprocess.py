@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import spectral
 import torch
+import matplotlib.pyplot as plt
 
 from input.utils import hyp2for, world2envi_p, open_as_rgb
 
@@ -154,7 +155,20 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
     return hyper_labels
 
 
-def process_labels(labels):
+def plot_chart(ax, label_name, unique_values, unique_counts):
+    if unique_values[0] == 0:
+        unique_values = unique_values[1:]
+        unique_counts = unique_counts[1:]
+
+    unique_counts = 100 * unique_counts / np.sum(unique_counts)
+    print('Distribution: {} = {}'.format(label_name, " ".join(map("{:.2f}%".format, unique_counts))))
+    ax.pie(unique_counts, labels=unique_values, autopct='%1.2f%%',
+            shadow=False, startangle=90)
+    ax.axis('equal')
+    ax.set_title(label_name)
+
+
+def process_labels(labels, save_path):
     """
     - Calculate class member for each categorical class
     - Sort class members and assign indices
@@ -172,6 +186,7 @@ def process_labels(labels):
     # TODO: get 'categorical_classes' from parameter
     # Current categorical classes: fertilityclass (0), soiltype (1), developmentclass (2), maintreespecies (9)
     categorical_classes = [0, 1, 2, 9]  # contains the indices of the categorical classes in forest data
+    label_names = ['Fertility class', 'Soil type', 'Development class', 'Main tree species']
     useless_bands = [3]
     transformed_data = None
     num_classes = 0
@@ -179,12 +194,15 @@ def process_labels(labels):
     categorical = {}
     R, C, _ = labels.shape
 
-    for i in categorical_classes:
-        band = labels[:, :, i]
-        unique_values = np.unique(band)
-        print('Band {}: {}'.format(i, unique_values))
+    fig, axs = plt.subplots((len(categorical_classes) + 1) // 2, 2)
+
+    for i, b in enumerate(categorical_classes):
+        band = labels[:, :, b]
+        unique_values, unique_counts = np.unique(band, return_counts=True)
+        print('Band {}: unique values = {}, frequency = {}'.format(b, unique_values, unique_counts))
+        plot_chart(axs[i // 2, i % 2], label_names[i], unique_values, unique_counts)
         index_dict = dict([(val, idx) for (idx, val) in enumerate(unique_values)])
-        categorical[i] = unique_values
+        categorical[b] = unique_values
         one_hot = np.zeros((R, C, len(unique_values)), dtype=int)
         for row in range(R):
             for col in range(C):
@@ -201,22 +219,23 @@ def process_labels(labels):
     labels = np.delete(labels, np.append(categorical_classes, useless_bands), axis=2)
 
     # normalize data for regression task
-    for i in range(labels.shape[2]):
-        max = np.max(labels[:, :, i])
-        min = np.min(labels[:, :, i])
+    for b in range(labels.shape[2]):
+        max = np.max(labels[:, :, b])
+        min = np.min(labels[:, :, b])
         if max != min:
-            labels[:, :, i] = (labels[:, :, i] - min) / (max - min)
+            labels[:, :, b] = (labels[:, :, b] - min) / (max - min)
         elif max != 0:  # if all items have the same non-zero value
-            labels[:, :, i].fill(0.5)
+            labels[:, :, b].fill(0.5)
         else:  # if all are 0, if this happens, consider remove the whole band from data
-            labels[:, :, i].fill(0.0)
-            print('Band with index %d has all zero values, consider removing it!' % i)
+            labels[:, :, b].fill(0.0)
+            print('Band with index %d has all zero values, consider removing it!' % b)
 
     # concatenate with newly transformed data
     labels = np.concatenate((transformed_data, labels), axis=2)
 
     metadata['categorical'] = categorical
     metadata['num_classes'] = num_classes
+    fig.savefig('%s/class_distribution.png' % save_path)
     return labels, metadata
 
 
@@ -225,6 +244,10 @@ def main():
     #######
     options = parse_args()
     print(options)
+    save_path = './data/%s' % options.save_dir
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_gt = get_geotrans(options.hyper_data_path)
     hyper_image = hyper_data.open_memmap()
@@ -239,16 +262,12 @@ def main():
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
     # Disable human data for now as there are only 19 Titta points in the map
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
-    hyper_labels, metadata = process_labels(hyper_labels)
+    hyper_labels, metadata = process_labels(hyper_labels, save_path)
 
-    path = './data/%s' % options.save_dir
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-    image_norm_name = '%s/image_norm_%s.pt' % (path, options.normalize_method)
-    tgt_name = '%s/%s.pt' % (path, options.tgt_file_name)
-    metadata_name = '%s/%s.pt' % (path, options.metadata_file_name)
-    src_name = '%s/%s.pt' % (path, options.src_file_name)
+    image_norm_name = '%s/image_norm_%s.pt' % (save_path, options.normalize_method)
+    tgt_name = '%s/%s.pt' % (save_path, options.tgt_file_name)
+    metadata_name = '%s/%s.pt' % (save_path, options.metadata_file_name)
+    src_name = '%s/%s.pt' % (save_path, options.src_file_name)
 
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
@@ -258,7 +277,7 @@ def main():
 
     wavelength = np.array(hyper_data.metadata['wavelength'], dtype=float)
 
-    open_as_rgb(hyper_image, wavelength, path)
+    open_as_rgb(hyper_image, wavelength, save_path)
 
     R, C, B = hyper_image.shape
     # storing L2 norm of the image based on normalization method
