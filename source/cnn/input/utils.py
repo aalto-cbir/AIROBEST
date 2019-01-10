@@ -154,8 +154,19 @@ def save_as_rgb(hyper_image, wavelength, path):
     i_g = abs(wavelength - 0.550).argmin()  # green, closest band to 550 nm
     i_b = abs(wavelength - 0.490).argmin()  # blue, closest to 490 nm
 
-    hyp_rgb = hyper_image[:, :, [i_r, i_g, i_b]]
+    hyp_rgb = hyper_image[:, :, [i_r, i_g, i_b]] / 8  # heuristically scale down the reflectance for good representation
     print(np.max(hyp_rgb))
-    hyp_rgb = hyp_rgb / 40
+    # hyp_rgb[hyp_rgb > 255] = hyp_rgb[hyp_rgb > 255] / 5  # continue scaling down high values
+    hyp_rgb[hyp_rgb > 255] = 255
+    hyp_rgb[hyp_rgb == 0.0] = 255
+
+    # hyp_rgb = hyp_rgb / 40
     # hyp_rgb = np.asarray(np.copy(hyp_rgb).transpose((2, 0, 1)), dtype='float32')
-    Image.fromarray(hyp_rgb.astype('uint8')).save('%s/rgb_image.png' % path)
+    height, width = hyp_rgb.shape[:2]
+    if height > 3000 or width > 3000:
+        height = height // 5
+        width = width // 5
+    print("RGB size (wxh):", width, height)
+    img = Image.fromarray(hyp_rgb.astype('uint8'))
+    img.thumbnail((width, height), Image.ANTIALIAS)
+    img.save('%s/rgb_image.png' % path)

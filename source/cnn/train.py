@@ -121,7 +121,8 @@ def main():
     options = parse_args()
 
     # TODO: options
-    options.disabled = 'classification'
+    # options.disabled = 'classification'
+    options.disabled = None
 
     if options.train_from:
         print('Loading checkpoint from %s' % options.train_from)
