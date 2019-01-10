@@ -2,11 +2,9 @@
 
 #SBATCH -J preprocess
 #SBATCH --mem-per-cpu 200000
-##SBATCH --gres=gpu:k80:1
 ##SBATCH -p gputest
 ##SBATCH -t 0:15:00
 
-##SBATCH --gres=gpu:p100:1
 #SBATCH -p gpu
 #SBATCH -t 1:00:00
 

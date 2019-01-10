@@ -13,7 +13,7 @@ import spectral
 import torch
 import matplotlib.pyplot as plt
 
-from input.utils import hyp2for, world2envi_p, save_as_rgb
+from input.utils import hyp2for, world2envi_p, save_as_rgb, visualize_label
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
@@ -28,7 +28,6 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-hyper_data_path',
                         required=False, type=str,
-                        # default='/proj/deepsat/hyperspectral/subset_A_20170615_reflectance.hdr',
                         default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data')
     parser.add_argument('-forest_data_path',
@@ -218,25 +217,30 @@ def process_labels(labels, save_path):
     # delete all the categorical classes from label data
     labels = np.delete(labels, np.append(categorical_classes, useless_bands), axis=2)
 
+    fig.savefig('%s/class_distribution.png' % save_path)
+    plt.close(fig)
+
     # normalize data for regression task
+    normalized_labels = []
     for b in range(labels.shape[2]):
         max = np.max(labels[:, :, b])
         min = np.min(labels[:, :, b])
         if max != min:
-            labels[:, :, b] = (labels[:, :, b] - min) / (max - min)
+            normalized_labels.append((labels[:, :, b] - min) / (max - min))
         elif max != 0:  # if all items have the same non-zero value
-            labels[:, :, b].fill(0.5)
+            normalized_labels.append(labels[:, :, b].fill(0.5))
         else:  # if all are 0, if this happens, consider remove the whole band from data
-            labels[:, :, b].fill(0.0)
+            normalized_labels.append(labels[:, :, b].fill(0.0))
             print('Band with index %d has all zero values, consider removing it!' % b)
 
+    normalized_labels = np.stack(normalized_labels, axis=2)
     # concatenate with newly transformed data
-    labels = np.concatenate((transformed_data, labels), axis=2)
+    normalized_labels = np.concatenate((transformed_data, normalized_labels), axis=2)
 
     metadata['categorical'] = categorical
     metadata['num_classes'] = num_classes
-    fig.savefig('%s/class_distribution.png' % save_path)
-    return labels, metadata
+
+    return normalized_labels, metadata
 
 
 def main():
@@ -263,6 +267,8 @@ def main():
     # Disable human data for now as there are only 19 Titta points in the map
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
     hyper_labels, metadata = process_labels(hyper_labels, save_path)
+
+    visualize_label(hyper_labels, save_path)
 
     image_norm_name = '%s/image_norm_%s.pt' % (save_path, options.normalize_method)
     tgt_name = '%s/%s.pt' % (save_path, options.tgt_file_name)

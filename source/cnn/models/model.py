@@ -251,7 +251,7 @@ class PhamModel(nn.Module):
 
 
 class ModelTrain(nn.Module):
-    def __init__(self, model, criterion_cls, criterion_reg, metadata):
+    def __init__(self, model, criterion_cls, criterion_reg, metadata, options):
         super(ModelTrain, self).__init__()
         self.model = model
         self.task_count = model.n_cls + model.n_reg
@@ -259,15 +259,22 @@ class ModelTrain(nn.Module):
         self.criterion_cls = criterion_cls
         self.criterion_reg = criterion_reg
         self.categorical = metadata['categorical']
+        self.options = options
 
     def forward(self, src, tgt_cls, tgt_reg):
         task_loss = []
         pred_cls, pred_reg = self.model(src)
         start = 0
+
         for key, values in self.categorical.items():
             n_classes = len(values)
             prediction, target = pred_cls[:, start:(start+n_classes)], tgt_cls[:, start:(start+n_classes)]
-            single_loss = self.criterion_cls(prediction, target)
+            # target = torch.argmax(target, dim=1).long()
+            if self.options.disabled == 'classification':
+                single_loss = torch.tensor(0.0, device=tgt_cls.device)
+            else:
+                single_loss = self.criterion_cls(prediction, target)
+
             task_loss.append(single_loss)
             start += n_classes
 

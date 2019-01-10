@@ -3,6 +3,8 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 import torch
 import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set()
 
 
 def envi2world_p(xy, GT):
@@ -119,16 +121,25 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
     return train, val
 
 
-def visualize_label(hyper_labels):
-    _, _, B = hyper_labels.shape
-    flatten_labels = hyper_labels.reshape(-1, B)
-    for i in range(B):
-        y_values = flatten_labels[:, i]
-        plt.bar(len(flatten_labels), y_values)
-
-    plt.savefig('./data/labels-bar.jpg')
-    # TODO: pie charts for classes
-    plt.show()
+def visualize_label(hyper_labels, save_path):
+    """
+    Visualize normalized hyper labels
+    :param hyper_labels:
+    :return:
+    """
+    n_tasks = 13
+    label_names = ['basalarea', 'meanage', 'stemcount', 'meanheight', 'N_strata', 'percentage_mainspecies',
+                   'percentage_pine', 'percentage_spruce', 'percentage_broadleaf', 'woodybiomass', 'LAI*100',
+                   'LAI_effective*100', 'dbh*100']
+    reg_labels = hyper_labels[:, :, -n_tasks:]
+    print(reg_labels.shape, reg_labels.shape[-1])
+    for i in range(reg_labels.shape[-1]):
+        labels = reg_labels[:, :, i]
+        ax = sns.heatmap(labels)
+        figure = ax.get_figure()
+        figure.savefig('{}/{}'.format(save_path, label_names[i]))
+        plt.close(figure)
+        print('{}: Min={}, Max={}, Mean={}'.format(label_names[i], np.min(labels), np.max(labels), np.mean(labels)))
 
 
 def save_as_rgb(hyper_image, wavelength, path):
@@ -144,6 +155,7 @@ def save_as_rgb(hyper_image, wavelength, path):
     i_b = abs(wavelength - 0.490).argmin()  # blue, closest to 490 nm
 
     hyp_rgb = hyper_image[:, :, [i_r, i_g, i_b]]
-    hyp_rgb = hyp_rgb * 255 / np.max(hyp_rgb)
+    print(np.max(hyp_rgb))
+    hyp_rgb = hyp_rgb / 40
     # hyp_rgb = np.asarray(np.copy(hyp_rgb).transpose((2, 0, 1)), dtype='float32')
     Image.fromarray(hyp_rgb.astype('uint8')).save('%s/rgb_image.png' % path)

@@ -291,7 +291,11 @@ class Trainer(object):
         avg_accuracy = torch.mean(val_accuracies)
         conf_matrices = []
         for i in range(tgt_indices.shape[-1]):
-            conf_matrices.append(confusion_matrix(tgt_indices[:, i], pred_indices[:, i]))
+            conf_matrix = confusion_matrix(tgt_indices[:, i], pred_indices[:, i])
+            # convert to percentage along rows
+            conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
+            conf_matrix = 100*np.around(conf_matrix, decimals=2)
+            conf_matrices.append(conf_matrix)
         return average_loss, avg_accuracy, val_accuracies, conf_matrices
 
     def compute_accuracy(self, predict, tgt):

@@ -37,6 +37,10 @@ def parse_args():
                         required=False, type=str,
                         default='./data/mosaic/hyperspectral_tgt_normalized.pt',
                         help='Path to training labels')
+    parser.add_argument('-input_normalize_method',
+                        required=False, type=str,
+                        default='l2_norm', choices=['l2_norm', 'minmax_scaling'],
+                        help='Normalization method for input image')
     parser.add_argument('-metadata',
                         type=str,
                         default='./data/mosaic/metadata.pt',
@@ -116,6 +120,9 @@ def main():
     checkpoint = None
     options = parse_args()
 
+    # TODO: options
+    options.disabled = 'classification'
+
     if options.train_from:
         print('Loading checkpoint from %s' % options.train_from)
         print('Overwrite some options with values from checkpoint!!!')
@@ -178,6 +185,9 @@ def main():
     # loss = nn.CrossEntropyLoss()
     # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
 
+    # TODO: refactor
+    if options.input_normalize_method == 'minmax_scaling':
+        norm_inv = None
     train_loader = get_loader(hyper_image,
                               norm_inv,
                               hyper_labels_cls,
@@ -200,7 +210,7 @@ def main():
                             shuffle=True)
 
     print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
-    modelTrain = ModelTrain(model, loss_cls, loss_reg, metadata)
+    modelTrain = ModelTrain(model, loss_cls, loss_reg, metadata, options)
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
     modelTrain = modelTrain.to(device)
     optimizer = optim.Adam(modelTrain.parameters(), lr=options.lr)
