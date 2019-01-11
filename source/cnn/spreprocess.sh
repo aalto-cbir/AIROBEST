@@ -28,3 +28,5 @@ srun python -u preprocess.py    -save_dir mosaic \
 echo -e "\n ... printing job stats .... \n"
 used_slurm_resources.bash
 
+# subset_A_20170615_reflectance.hdr
+# 20170615_reflectance_mosaic_128b.hdr

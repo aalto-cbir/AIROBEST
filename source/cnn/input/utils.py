@@ -132,7 +132,7 @@ def visualize_label(hyper_labels, save_path):
                    'percentage_pine', 'percentage_spruce', 'percentage_broadleaf', 'woodybiomass', 'LAI*100',
                    'LAI_effective*100', 'dbh*100']
     reg_labels = hyper_labels[:, :, -n_tasks:]
-    print(reg_labels.shape, reg_labels.shape[-1])
+    print('Regression label', reg_labels.shape, reg_labels.shape[-1])
     for i in range(reg_labels.shape[-1]):
         labels = reg_labels[:, :, i]
         ax = sns.heatmap(labels)

@@ -73,7 +73,7 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
     rows, cols, _ = hyper_image.shape
 
     c, r = hyp2for((0, 0), hyper_gt, forest_gt)
-    hyper_labels = forest_labels[r:(r+rows), c:(c+cols)]
+    hyper_labels = np.array(forest_labels[r:(r+rows), c:(c+cols)])
 
     return hyper_labels
 
@@ -276,11 +276,11 @@ def process_labels(labels, zero_count, save_path):
     # normalize data for regression task
     normalized_labels = []
     for b in range(labels.shape[2]):
-        max = np.max(labels[:, :, b])
-        min = np.min(labels[:, :, b])
-        if max != min:
-            normalized_labels.append((labels[:, :, b] - min) / (max - min))
-        elif max != 0:  # if all items have the same non-zero value
+        max_val = np.max(labels[:, :, b])
+        min_val = np.min(labels[:, :, b])
+        if max_val != min_val:
+            normalized_labels.append((labels[:, :, b] - min_val) / (max_val - min_val))
+        elif max_val != 0:  # if all items have the same non-zero value
             normalized_labels.append(labels[:, :, b].fill(0.5))
         else:  # if all are 0, if this happens, consider remove the whole band from data
             normalized_labels.append(labels[:, :, b].fill(0.0))
@@ -310,8 +310,6 @@ def main():
     hyper_image = hyper_data.open_memmap()
     hyper_image = hyper_image[:, :, 0:110]  # only take the first 110 spectral bands, the rest are noisy
     R, C, B = hyper_image.shape
-    sum_pixels = np.sum(hyper_image, axis=-1)
-    zero_count = R*C - np.count_nonzero(sum_pixels)
 
     forest_data = spectral.open_image(options.forest_data_path)
     forest_gt = get_geotrans(options.forest_data_path)
@@ -320,6 +318,15 @@ def main():
     forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
+
+    sum_pixels = np.sum(hyper_image, axis=-1)
+    zero_count = R * C - np.count_nonzero(sum_pixels)
+    print('Zero count in image:', R, C, B, sum_pixels.shape, zero_count)
+    hyper_labels[sum_pixels == 0] = 0
+    # sum_pixels2 = np.sum(hyper_labels, axis=-1)
+    # zero_count2 = R * C - np.count_nonzero(sum_pixels2)
+    # print('Zero count in labels:', R, C, B, sum_pixels2.shape, zero_count2)
+
     # Disable human data for now as there are only 19 Titta points in the map
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
     hyper_labels, metadata = process_labels(hyper_labels, zero_count, save_path)

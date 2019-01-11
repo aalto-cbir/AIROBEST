@@ -223,8 +223,8 @@ class Trainer(object):
                 accuracies = torch.cat((accuracies, val_accuracies, val_avg_accuracy.view(1)))
                 accuracy_legend = accuracy_legend + ['val_{}'.format(i) for i in range(len(val_accuracies))]
                 accuracy_legend.append('val_avg')
-                # metric = val_loss
-                metric = -val_avg_accuracy
+                metric = val_loss
+                # metric = -val_avg_accuracy
 
                 if e % 5 == 1:
                     for i in range(len(conf_matrices)):

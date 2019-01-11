@@ -29,7 +29,8 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -batch_size 64 \
                     -epoch 100 \
                     -model PhamModel \
-                    -save_dir Pham-080119-test2 \
+                    -input_normalize_method minmax_scaling \
+                    -save_dir Pham-110119-test2 \
                     -report_frequency 20 \
                     -loss_balancing equal_weights \
                     -visdom_server http://taito-gpu.csc.fi \

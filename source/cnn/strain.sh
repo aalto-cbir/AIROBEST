@@ -4,7 +4,8 @@
 #SBATCH --mem-per-cpu 100000
 #SBATCH --gres=gpu:p100:1
 #SBATCH -p gpu
-#SBATCH -t 10:00:00
+#SBATCH -t 5:00:00
+##SBATCH --begin=07:00
 
 id -a
 
@@ -25,7 +26,8 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -batch_size 64 \
                     -epoch 50 \
                     -model PhamModel \
-                    -save_dir Pham-050119-2 \
+                    -input_normalize_method minmax_scaling \
+                    -save_dir Pham-110119-2 \
                     -report_frequency 150 \
                     -loss_balancing equal_weights \
                     -visdom_server http://taito-gpu.csc.fi \
