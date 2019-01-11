@@ -154,20 +154,63 @@ def apply_human_data(human_data_path, hyper_labels, hyper_gt, forest_columns):
     return hyper_labels
 
 
-def plot_chart(ax, label_name, unique_values, unique_counts):
-    if unique_values[0] == 0:
-        unique_values = unique_values[1:]
-        unique_counts = unique_counts[1:]
+def plot_chart(ax, label_name, unique_values, percentage):
 
-    unique_counts = 100 * unique_counts / np.sum(unique_counts)
-    print('Distribution: {} = {}'.format(label_name, " ".join(map("{:.2f}%".format, unique_counts))))
-    ax.pie(unique_counts, labels=unique_values, autopct='%1.2f%%',
-            shadow=False, startangle=90)
-    ax.axis('equal')
+    x = np.arange(len(unique_values))
+    ax.bar(x, percentage)
+
+    totals = []
+
+    # find the values and append to list
+    for i in ax.patches:
+        totals.append(i.get_height())
+
+    # set individual bar label using above list
+    total = sum(totals)
+    # set individual bar label using above list
+    for i in ax.patches:
+        # get_x pulls left or right; get_height pushes up or down
+        ax.text(i.get_x() + .12, i.get_height(), str(round((i.get_height() / total) * 100, 1)), fontsize=10,
+                color='green')
+    ax.set_xticks(x)
+    ax.set_xticklabels(unique_values)
+    plt.tight_layout()
     ax.set_title(label_name)
 
 
-def process_labels(labels, save_path):
+def handle_class_balancing(percentage, unique_values, threshold=5):
+    minor_percentages = percentage[percentage < threshold]
+    remaining_percentages = percentage[percentage >= threshold]
+    minor_classes = unique_values[percentage < threshold]
+    remaining_classes = unique_values[percentage >= threshold]
+    # 2 approaches to handle class imbalance
+    #   1: combine minor classes into a NEW common class (if minor_sum >= threshold)
+    #   2: combine minor classes into smallest class above the threshold (otherwise)
+    minor_sum = minor_percentages.sum()
+
+    if minor_sum >= threshold:
+        combined_class_idx = len(remaining_percentages)
+        new_class = np.max(remaining_classes) + 1
+        remaining_classes = np.append(remaining_classes, new_class)
+        remaining_percentages = np.append(remaining_percentages, minor_sum)
+
+    else:
+        combined_class_idx = np.argmin(remaining_percentages)
+        remaining_percentages[combined_class_idx] += minor_sum
+
+    index_dict = dict([(val, idx) for (idx, val) in enumerate(remaining_classes)])
+
+    # point removed classes to the combined_class_idx
+    for i in minor_classes:
+        index_dict[i] = combined_class_idx
+
+    print('Removed classes: {}, percentages: {}'.format(minor_classes, minor_percentages))
+    print('Final classes: {}, percentages: {}'.format(remaining_classes, remaining_percentages))
+    print('Index dict:', index_dict)
+    return index_dict, remaining_classes, remaining_percentages
+
+
+def process_labels(labels, zero_count, save_path):
     """
     - Calculate class member for each categorical class
     - Sort class members and assign indices
@@ -198,11 +241,21 @@ def process_labels(labels, save_path):
     for i, b in enumerate(categorical_classes):
         band = labels[:, :, b]
         unique_values, unique_counts = np.unique(band, return_counts=True)
-        print('Band {}: unique values = {}, frequency = {}'.format(b, unique_values, unique_counts))
-        plot_chart(axs[i // 2, i % 2], label_names[i], unique_values, unique_counts)
-        index_dict = dict([(val, idx) for (idx, val) in enumerate(unique_values)])
-        categorical[b] = unique_values
-        one_hot = np.zeros((R, C, len(unique_values)), dtype=int)
+        # recount zero values as there are zero pixel values from the hyperspectral image
+        if unique_values[0] == 0.0:
+            unique_counts[0] -= zero_count
+        percentage = 100 * unique_counts / np.sum(unique_counts)
+        print('Band {} ({}): unique values = {}, original distribution = {}, frequency = {}'
+              .format(b, label_names[i], unique_values, " ".join(map("{:.2f}%".format, percentage)), unique_counts))
+
+        # plot_chart(axs[i // 2, i % 2], label_names[i], unique_values, percentage)  # original distribution
+        # index_dict = dict([(val, idx) for (idx, val) in enumerate(unique_values)])
+
+        threshold = 5
+        index_dict, new_unique_values, new_percentages = handle_class_balancing(percentage, unique_values, threshold)
+        plot_chart(axs[i // 2, i % 2], label_names[i], new_unique_values, new_percentages)
+        categorical[b] = new_unique_values
+        one_hot = np.zeros((R, C, len(new_unique_values)), dtype=int)
         for row in range(R):
             for col in range(C):
                 idx = index_dict[band[row, col]]  # get the index of the value  band[row, col] in one-hot vector
@@ -212,7 +265,7 @@ def process_labels(labels, save_path):
             transformed_data = one_hot
         else:
             transformed_data = np.concatenate((transformed_data, one_hot), axis=2)
-        num_classes += len(unique_values)
+        num_classes += len(new_unique_values)
 
     # delete all the categorical classes from label data
     labels = np.delete(labels, np.append(categorical_classes, useless_bands), axis=2)
@@ -256,6 +309,9 @@ def main():
     hyper_gt = get_geotrans(options.hyper_data_path)
     hyper_image = hyper_data.open_memmap()
     hyper_image = hyper_image[:, :, 0:110]  # only take the first 110 spectral bands, the rest are noisy
+    R, C, B = hyper_image.shape
+    sum_pixels = np.sum(hyper_image, axis=-1)
+    zero_count = R*C - np.count_nonzero(sum_pixels)
 
     forest_data = spectral.open_image(options.forest_data_path)
     forest_gt = get_geotrans(options.forest_data_path)
@@ -266,7 +322,7 @@ def main():
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
     # Disable human data for now as there are only 19 Titta points in the map
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
-    hyper_labels, metadata = process_labels(hyper_labels, save_path)
+    hyper_labels, metadata = process_labels(hyper_labels, zero_count, save_path)
 
     visualize_label(hyper_labels, save_path)
 
@@ -285,8 +341,6 @@ def main():
     wavelength = np.array(hyper_data.metadata['wavelength'], dtype=float)
 
     save_as_rgb(hyper_image, wavelength, save_path)
-
-    R, C, B = hyper_image.shape
     # storing L2 norm of the image based on normalization method
     if options.normalize_method == 'l2norm_along_channel':  # l2 norm along *band* axis
         # norm = np.linalg.norm(hyper_image, axis=2)
