@@ -1,10 +1,10 @@
+import os
+
 import numpy as np
 from PIL import Image
 from sklearn.model_selection import train_test_split
 import torch
 import matplotlib.pyplot as plt
-import seaborn as sns
-sns.set()
 
 
 def envi2world_p(xy, GT):
@@ -121,6 +121,18 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
     return train, val
 
 
+def resize_img(path, threshold):
+    assert os.path.exists(path), 'Image does not exists in path: %s' % path
+    img = Image.open(path)
+    width, height = img.size
+    max_size = np.max([width, height])
+    if max_size > threshold:
+        scaling_factor = max_size // threshold + 1
+        new_width, new_height = width // scaling_factor, height // scaling_factor
+        img.thumbnail((new_width, new_height), Image.ANTIALIAS)
+        img.save(path)
+
+
 def visualize_label(hyper_labels, save_path):
     """
     Visualize normalized hyper labels
@@ -135,11 +147,23 @@ def visualize_label(hyper_labels, save_path):
     print('Regression label', reg_labels.shape, reg_labels.shape[-1])
     for i in range(reg_labels.shape[-1]):
         labels = reg_labels[:, :, i]
-        ax = sns.heatmap(labels)
-        figure = ax.get_figure()
-        figure.savefig('{}/{}'.format(save_path, label_names[i]))
-        plt.close(figure)
+        name = '{}/{}.png'.format(save_path, label_names[i])
+
+        # image with colorbar
+        fig, ax = plt.subplots(figsize=(20, 20))
+        # plt.rc('font', size=30)
+        ax.grid(False)
+        ax.set_title('Data distribution of %s' % label_names[i])
+        im = ax.imshow(labels)
+        plt.axis('off')
+        plt.colorbar(im)
+        fig.savefig(name)
+        plt.close(fig)
+        #####
+
+        # plt.imsave(name, labels)
         print('{}: Min={}, Max={}, Mean={}'.format(label_names[i], np.min(labels), np.max(labels), np.mean(labels)))
+        resize_img(name, 2000)
 
 
 def save_as_rgb(hyper_image, wavelength, path):
@@ -163,9 +187,12 @@ def save_as_rgb(hyper_image, wavelength, path):
     # hyp_rgb = hyp_rgb / 40
     # hyp_rgb = np.asarray(np.copy(hyp_rgb).transpose((2, 0, 1)), dtype='float32')
     height, width = hyp_rgb.shape[:2]
-    if height > 3000 or width > 3000:
-        height = height // 5
-        width = width // 5
+    threshold = 2000
+    max_size = np.max([width, height])
+    if max_size > threshold:
+        scaling_factor = max_size // threshold + 1
+        height = height // scaling_factor
+        width = width // scaling_factor
     print("RGB size (wxh):", width, height)
     img = Image.fromarray(hyp_rgb.astype('uint8'))
     img.thumbnail((width, height), Image.ANTIALIAS)

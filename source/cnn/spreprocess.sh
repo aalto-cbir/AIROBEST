@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
 #SBATCH -J preprocess
-#SBATCH --mem-per-cpu 200000
+##SBATCH --mem-per-cpu 2000
 ##SBATCH -p gputest
 ##SBATCH -t 0:15:00
 
+#SBATCH --mem-per-cpu 200000
 #SBATCH -p gpu
 #SBATCH -t 1:00:00
 
