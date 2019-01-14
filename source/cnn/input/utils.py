@@ -5,6 +5,21 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 import torch
 import matplotlib.pyplot as plt
+import string
+
+
+def format_filename(s):
+    """Take a string and return a valid filename constructed from the string.
+Uses a whitelist approach: any characters not present in valid_chars are
+removed. Also spaces are replaced with underscores.
+
+Note: this method may produce invalid file names such as ``, `.` or `..`
+
+"""
+    valid_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
+    filename = ''.join(c for c in s if c in valid_chars)
+    filename = filename.replace(' ', '_')
+    return filename
 
 
 def envi2world_p(xy, GT):
@@ -70,7 +85,7 @@ def get_patch(tensor, row, col, patch_size):
     return tensor[row1:(row2 + 1), col1:(col2 + 1)]
 
 
-def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
+def split_data(rows, cols, mask, patch_size, stride=1, mode='grid'):
     """
     Split dataset into train, test, val sets based on the coordinates
     of each pixel in the hyperspectral image
@@ -95,7 +110,7 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
     val_row_end = val_row_start + round(rows / 6)
     for i in range(patch_size // 2, rows - patch_size // 2, stride):
         for j in range(patch_size // 2, cols - patch_size // 2, stride):
-            patch = get_patch(norm_inv, i, j, patch_size)
+            patch = get_patch(mask, i, j, patch_size)
             if torch.min(patch) > 0:  # make sure there is no black pixels in the patch
                 if mode == 'random' or mode == 'grid':
                     coords.append((i, j))
@@ -103,7 +118,7 @@ def split_data(rows, cols, norm_inv, patch_size, stride=1, mode='grid'):
                     if i <= val_row_start - patch_size // 2 or val_row_end + patch_size // 2 <= i:
                         train.append((i, j))
                     elif val_row_start <= i <= val_row_end:
-                            val.append((i, j))
+                        val.append((i, j))
 
     if mode == 'random' or mode == 'grid':
         # train, test = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
@@ -133,28 +148,23 @@ def resize_img(path, threshold):
         img.save(path)
 
 
-def visualize_label(hyper_labels, save_path):
+def visualize_label(target_labels, label_names, save_path):
     """
     Visualize normalized hyper labels
-    :param hyper_labels:
+    :param target_labels:
+    :param label_names:
+    :param save_path:
     :return:
     """
-    n_tasks = 13
-    label_names = ['basalarea', 'meanage', 'stemcount', 'meanheight', 'N_strata', 'percentage_mainspecies',
-                   'percentage_pine', 'percentage_spruce', 'percentage_broadleaf', 'woodybiomass', 'LAI*100',
-                   'LAI_effective*100', 'dbh*100']
-    reg_labels = hyper_labels[:, :, -n_tasks:]
-    print('Regression label', reg_labels.shape, reg_labels.shape[-1])
-    for i in range(reg_labels.shape[-1]):
-        labels = reg_labels[:, :, i]
+    for i in range(target_labels.shape[-1]):
+        labels = target_labels[:, :, i]
         name = '{}/{}.png'.format(save_path, label_names[i])
 
         # image with colorbar
         fig, ax = plt.subplots(figsize=(20, 20))
-        # plt.rc('font', size=30)
         ax.grid(False)
         ax.set_title('Data distribution of %s' % label_names[i])
-        im = ax.imshow(labels)
+        im = ax.imshow(labels, cmap='viridis')
         plt.axis('off')
         plt.colorbar(im)
         fig.savefig(name)
@@ -164,6 +174,8 @@ def visualize_label(hyper_labels, save_path):
         # plt.imsave(name, labels)
         print('{}: Min={}, Max={}, Mean={}'.format(label_names[i], np.min(labels), np.max(labels), np.mean(labels)))
         resize_img(name, 2000)
+
+    print('-------Done visualizing labels--------')
 
 
 def save_as_rgb(hyper_image, wavelength, path):
@@ -197,3 +209,29 @@ def save_as_rgb(hyper_image, wavelength, path):
     img = Image.fromarray(hyp_rgb.astype('uint8'))
     img.thumbnail((width, height), Image.ANTIALIAS)
     img.save('%s/rgb_image.png' % path)
+
+
+def compute_data_distribution(labels, dataset, categorical):
+    """
+
+    :param labels:
+    :param dataset:
+    :param categorical: dictionary contains class info (equivalent to  metadata['categorical'])
+    :return:
+    """
+    data_labels = []  # labels of data points in the dataset
+    for (r, c) in dataset:
+        data_labels.append(labels[r, c, :])
+
+    data_labels = torch.stack(data_labels, dim=0)
+    num_classes = 0
+    for idx, (key, values) in enumerate(categorical.items()):
+        count = len(values)
+        indices = torch.argmax(data_labels[:, num_classes:(num_classes+count)])
+        unique_values, unique_count = np.unique(indices, return_counts=True)
+        percentage = unique_count / np.sum(unique_count)
+
+        print('Dataset distribution for task {}: classes={}, percentage={}'.format(
+            key,
+            values[unique_values],
+            " ".join(map("{:.2f}%".format, percentage))))

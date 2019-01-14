@@ -13,7 +13,7 @@ import spectral
 import torch
 import matplotlib.pyplot as plt
 
-from input.utils import hyp2for, world2envi_p, save_as_rgb, visualize_label
+from input.utils import hyp2for, world2envi_p, save_as_rgb, visualize_label, split_data, format_filename
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
@@ -58,8 +58,15 @@ def parse_args():
                         type=str,
                         default='l2norm_along_channel', choices=['l2norm_along_channel', 'l2norm_channel_wise'],
                         help="Normalization method for input image")
+    parser.add_argument('-categorical_bands', nargs='+',
+                        required=False, default=[0, 1, 2, 9],
+                        help='List of band indices in the target labels for categorical tasks')
+    parser.add_argument('-ignored_bands', nargs='+',
+                        required=False, default=[3],
+                        help='List of band indices in the target labels to ignore')
     opt = parser.parse_args()
-
+    opt.categorical_bands = list(map(int, opt.categorical_bands))
+    opt.ignored_bands = list(map(int, opt.ignored_bands))
     return opt
 
 
@@ -210,7 +217,7 @@ def handle_class_balancing(percentage, unique_values, threshold=5):
     return index_dict, remaining_classes, remaining_percentages
 
 
-def process_labels(labels, zero_count, save_path):
+def process_labels(labels, categorical_bands, ignored_bands, label_names, zero_count, save_path):
     """
     - Calculate class member for each categorical class
     - Sort class members and assign indices
@@ -222,23 +229,24 @@ def process_labels(labels, zero_count, save_path):
 
     The label [2, 6] (fertiliticlass: 2, maintreespieces: 6) will become
     [0, 1, 0, 0, 0, 1]
-    :param labels: shape (RxCxB)
+    :param labels: shape RxCxB
+    :param categorical_bands:
+    :param ignored_bands:
+    :param label_names:
+    :param zero_count:
+    :param save_path:
     :return:
     """
-    # TODO: get 'categorical_classes' from parameter
-    # Current categorical classes: fertilityclass (0), soiltype (1), developmentclass (2), maintreespecies (9)
-    categorical_classes = [0, 1, 2, 9]  # contains the indices of the categorical classes in forest data
-    label_names = ['Fertility class', 'Soil type', 'Development class', 'Main tree species']
-    useless_bands = [3]
+
     transformed_data = None
     num_classes = 0
     metadata = {}
     categorical = {}
     R, C, _ = labels.shape
 
-    fig, axs = plt.subplots((len(categorical_classes) + 1) // 2, 2)
+    fig, axs = plt.subplots((len(categorical_bands) + 1) // 2, 2)
 
-    for i, b in enumerate(categorical_classes):
+    for i, b in enumerate(categorical_bands):
         band = labels[:, :, b]
         unique_values, unique_counts = np.unique(band, return_counts=True)
         # recount zero values as there are zero pixel values from the hyperspectral image
@@ -268,7 +276,7 @@ def process_labels(labels, zero_count, save_path):
         num_classes += len(new_unique_values)
 
     # delete all the categorical classes from label data
-    labels = np.delete(labels, np.append(categorical_classes, useless_bands), axis=2)
+    labels = np.delete(labels, np.append(categorical_bands, ignored_bands), axis=2)
 
     fig.savefig('%s/class_distribution.png' % save_path)
     plt.close(fig)
@@ -301,6 +309,7 @@ def main():
     #######
     options = parse_args()
     print(options)
+
     save_path = './data/%s' % options.save_dir
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -308,30 +317,37 @@ def main():
     hyper_data = spectral.open_image(options.hyper_data_path)
     hyper_gt = get_geotrans(options.hyper_data_path)
     hyper_image = hyper_data.open_memmap()
-    hyper_image = hyper_image[:, :, 0:110]  # only take the first 110 spectral bands, the rest are noisy
+    hyper_image = np.array(hyper_image[:, :, 0:110])  # only take the first 110 spectral bands, the rest are noisy
     R, C, B = hyper_image.shape
 
     forest_data = spectral.open_image(options.forest_data_path)
     forest_gt = get_geotrans(options.forest_data_path)
-    forest_columns = forest_data.metadata['band names']
+    band_names = np.array(list(map(format_filename, forest_data.metadata['band names'])))
     # forest_labels = torch.from_numpy(forest_data.open_memmap())  # shape: 11996x12517x17
     forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
 
+    # Current categorical classes: fertilityclass (0), soiltype (1), developmentclass (2), maintreespecies (9)
+    cls_label_names = band_names[options.categorical_bands]
+    reg_task_indices = np.array(range(hyper_labels.shape[-1]))
+    reg_task_indices = np.delete(reg_task_indices, np.append(options.categorical_bands, options.ignored_bands))
+    reg_label_names = band_names[reg_task_indices]
+    n_reg_tasks = 13
     sum_pixels = np.sum(hyper_image, axis=-1)
     zero_count = R * C - np.count_nonzero(sum_pixels)
     print('Zero count in image:', R, C, B, sum_pixels.shape, zero_count)
     hyper_labels[sum_pixels == 0] = 0
-    # sum_pixels2 = np.sum(hyper_labels, axis=-1)
-    # zero_count2 = R * C - np.count_nonzero(sum_pixels2)
-    # print('Zero count in labels:', R, C, B, sum_pixels2.shape, zero_count2)
+
+    cls_labels = hyper_labels[:, :, options.categorical_bands]
 
     # Disable human data for now as there are only 19 Titta points in the map
-    # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, forest_columns)
-    hyper_labels, metadata = process_labels(hyper_labels, zero_count, save_path)
+    # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, band_names)
+    hyper_labels, metadata = process_labels(hyper_labels, options.categorical_bands, options.ignored_bands,
+                                            cls_label_names, zero_count, save_path)
 
-    visualize_label(hyper_labels, save_path)
+    visualize_label(cls_labels, cls_label_names, save_path)
+    visualize_label(hyper_labels[:, :, -n_reg_tasks:], reg_label_names, save_path)
 
     image_norm_name = '%s/image_norm_%s.pt' % (save_path, options.normalize_method)
     tgt_name = '%s/%s.pt' % (save_path, options.tgt_file_name)
@@ -343,7 +359,7 @@ def main():
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
     torch.save(torch.from_numpy(hyper_image), src_name)
     print('Target file has shapes {}'.format(hyper_labels.shape))
-    del hyper_labels, forest_labels, forest_data
+    del forest_labels, forest_data
 
     wavelength = np.array(hyper_data.metadata['wavelength'], dtype=float)
 
@@ -351,16 +367,16 @@ def main():
     # storing L2 norm of the image based on normalization method
     if options.normalize_method == 'l2norm_along_channel':  # l2 norm along *band* axis
         # norm = np.linalg.norm(hyper_image, axis=2)
-        norm = np.zeros((R, C))
+        norm_inv = np.zeros((R, C))
         for i in range(0, R):
-            norm[i] = np.linalg.norm(hyper_image[i, :, :], axis=1)
+            norm_inv[i] = np.linalg.norm(hyper_image[i, :, :], axis=1)
     elif options.normalize_method == 'l2norm_channel_wise':  # l2 norm separately for each channel
-        norm = np.linalg.norm(hyper_image, axis=(0, 1))
+        norm_inv = np.linalg.norm(hyper_image, axis=(0, 1))
 
-    norm[norm > 0] = 1.0 / norm[norm > 0]  # invert positive values
-    torch.save(torch.from_numpy(norm), image_norm_name)
-
-    print('Source file has shapes {}'.format(norm.shape))
+    norm_inv[norm_inv > 0] = 1.0 / norm_inv[norm_inv > 0]  # invert positive values
+    norm_inv = torch.from_numpy(norm_inv)
+    torch.save(norm_inv, image_norm_name)
+    print('Source file has shapes {}'.format(norm_inv.shape))
     print('Processed files are stored under "./data" directory')
     print('End processing data...')
 

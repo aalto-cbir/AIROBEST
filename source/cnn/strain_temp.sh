@@ -8,7 +8,7 @@
 
 #SBATCH --gres=gpu:p100:1
 #SBATCH -p gpu
-#SBATCH -t 1:00:00
+#SBATCH -t 0:30:00
 
 id -a
 
@@ -30,7 +30,7 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -epoch 100 \
                     -model PhamModel \
                     -input_normalize_method minmax_scaling \
-                    -save_dir Pham-110119-test2 \
+                    -save_dir Pham-120119-subA1 \
                     -report_frequency 20 \
                     -loss_balancing equal_weights \
                     -visdom_server http://taito-gpu.csc.fi \

@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import visdom
 
 from models.model import ChenModel, LeeModel, PhamModel, ModelTrain
-from input.utils import split_data
+from input.utils import split_data, compute_data_distribution
 from input.data_loader import get_loader
 from trainer import Trainer
 
@@ -148,6 +148,7 @@ def main():
             visualizer = None
 
     metadata = get_input_data(options.metadata)
+    categorical = metadata['categorical']
     print('Metadata values', metadata)
     out_cls = metadata['num_classes']
     assert out_cls > 0, 'Number of classes has to be > 0'
@@ -163,7 +164,11 @@ def main():
 
     R, C, num_bands = hyper_image.shape
 
-    train_set, val_set = split_data(R, C, norm_inv, options.patch_size, options.patch_stride)
+    mask = torch.sum(hyper_image, dim=2)
+    train_set, val_set = split_data(R, C, mask, options.patch_size, options.patch_stride)
+
+    compute_data_distribution(hyper_labels_cls, train_set, categorical)
+    compute_data_distribution(hyper_labels_cls, val_set, categorical)
 
     # Model construction
     model_name = options.model
