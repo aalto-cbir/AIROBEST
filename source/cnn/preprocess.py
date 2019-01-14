@@ -57,13 +57,20 @@ def parse_args():
     parser.add_argument('-normalize_method',
                         type=str,
                         default='l2norm_along_channel', choices=['l2norm_along_channel', 'l2norm_channel_wise'],
-                        help="Normalization method for input image")
+                        help='Normalization method for input image')
+    parser.add_argument('-label_normalize_method',
+                        type=str,
+                        default='clip', choices=['minmax_scaling', 'clip'],  # TODO: support z-score
+                        help='Normalization method for target labels')
     parser.add_argument('-categorical_bands', nargs='+',
                         required=False, default=[0, 1, 2, 9],
                         help='List of band indices in the target labels for categorical tasks')
     parser.add_argument('-ignored_bands', nargs='+',
                         required=False, default=[3],
                         help='List of band indices in the target labels to ignore')
+    parser.add_argument('-ignore_zero_labels', type=bool,
+                        default=True,
+                        help='Whether to ignore target labels with 0 values in data statistics')
     opt = parser.parse_args()
     opt.categorical_bands = list(map(int, opt.categorical_bands))
     opt.ignored_bands = list(map(int, opt.ignored_bands))
@@ -217,7 +224,7 @@ def handle_class_balancing(percentage, unique_values, threshold=5):
     return index_dict, remaining_classes, remaining_percentages
 
 
-def process_labels(labels, categorical_bands, ignored_bands, label_names, zero_count, save_path):
+def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, reg_label_names, zero_count, save_path, options):
     """
     - Calculate class member for each categorical class
     - Sort class members and assign indices
@@ -232,7 +239,7 @@ def process_labels(labels, categorical_bands, ignored_bands, label_names, zero_c
     :param labels: shape RxCxB
     :param categorical_bands:
     :param ignored_bands:
-    :param label_names:
+    :param cls_label_names:
     :param zero_count:
     :param save_path:
     :return:
@@ -251,21 +258,27 @@ def process_labels(labels, categorical_bands, ignored_bands, label_names, zero_c
         unique_values, unique_counts = np.unique(band, return_counts=True)
         # recount zero values as there are zero pixel values from the hyperspectral image
         if unique_values[0] == 0.0:
-            unique_counts[0] -= zero_count
+            if options.ignore_zero_labels:
+                unique_values = np.delete(unique_values, 0)
+                unique_counts = np.delete(unique_counts, 0)
+            else:
+                unique_counts[0] -= zero_count
         percentage = 100 * unique_counts / np.sum(unique_counts)
         print('Band {} ({}): unique values = {}, original distribution = {}, frequency = {}'
-              .format(b, label_names[i], unique_values, " ".join(map("{:.2f}%".format, percentage)), unique_counts))
+              .format(b, cls_label_names[i], unique_values, " ".join(map("{:.2f}%".format, percentage)), unique_counts))
 
         # plot_chart(axs[i // 2, i % 2], label_names[i], unique_values, percentage)  # original distribution
         # index_dict = dict([(val, idx) for (idx, val) in enumerate(unique_values)])
 
         threshold = 5
         index_dict, new_unique_values, new_percentages = handle_class_balancing(percentage, unique_values, threshold)
-        plot_chart(axs[i // 2, i % 2], label_names[i], new_unique_values, new_percentages)
+        plot_chart(axs[i // 2, i % 2], cls_label_names[i], new_unique_values, new_percentages)
         categorical[b] = new_unique_values
         one_hot = np.zeros((R, C, len(new_unique_values)), dtype=int)
         for row in range(R):
             for col in range(C):
+                if band[row, col] == 0 and options.ignore_zero_labels:
+                    continue
                 idx = index_dict[band[row, col]]  # get the index of the value  band[row, col] in one-hot vector
                 one_hot[row, col, idx] = 1
 
@@ -284,22 +297,46 @@ def process_labels(labels, categorical_bands, ignored_bands, label_names, zero_c
     # normalize data for regression task
     normalized_labels = []
     for b in range(labels.shape[2]):
-        max_val = np.max(labels[:, :, b])
-        min_val = np.min(labels[:, :, b])
+        band = labels[:, :, b]
+        if options.label_normalize_method == 'minmax_scaling':
+            max_val = np.max(band)
+            min_val = np.min(band)
+        elif options.label_normalize_method == 'clip':
+            value_matrix = band[band > 0] if options.ignore_zero_labels else band
+            # use 2 and 98 percentile as thresholding values
+            # TODO: clip values can be passes as arguments
+            # NOTE: if we want to clip the matrix to a lower bound,
+            # more sophisticated handling needs to take place as the original
+            # zero data labels (road, lakes) will become negative => handle properly in
+            # splitting train, val data sets
+            max_val = np.percentile(value_matrix, 98)
+            # min_val = np.percentile(value_matrix, 2)
+            min_val = np.min(band)
+
+            # clip the data with thresholding values
+            band[band > max_val] = max_val
+
+            # zero_mask = band == 0
+            # band[band < min_val] = min_val  # this changes 0 values labels
+            # band[zero_mask] = 0  # put back 0 values has been changed by min_val
+
+        print('Regression {}: lower bound = {}, upper bound = {}'.format(reg_label_names[b], min_val, max_val))
         if max_val != min_val:
-            normalized_labels.append((labels[:, :, b] - min_val) / (max_val - min_val))
+            band = (band - min_val) / (max_val - min_val)
         elif max_val != 0:  # if all items have the same non-zero value
-            normalized_labels.append(labels[:, :, b].fill(0.5))
+            band.fill(0.5)
         else:  # if all are 0, if this happens, consider remove the whole band from data
-            normalized_labels.append(labels[:, :, b].fill(0.0))
+            band.fill(0.0)
             print('Band with index %d has all zero values, consider removing it!' % b)
 
+        normalized_labels.append(band)
     normalized_labels = np.stack(normalized_labels, axis=2)
     # concatenate with newly transformed data
     normalized_labels = np.concatenate((transformed_data, normalized_labels), axis=2)
 
     metadata['categorical'] = categorical
     metadata['num_classes'] = num_classes
+    metadata['ignore_zero_labels'] = options.ignore_zero_labels
 
     return normalized_labels, metadata
 
@@ -344,9 +381,11 @@ def main():
     # Disable human data for now as there are only 19 Titta points in the map
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, band_names)
     hyper_labels, metadata = process_labels(hyper_labels, options.categorical_bands, options.ignored_bands,
-                                            cls_label_names, zero_count, save_path)
+                                            cls_label_names, reg_label_names, zero_count, save_path, options)
 
+    print('Label visualization for classification tasks')
     visualize_label(cls_labels, cls_label_names, save_path)
+    print('Label visualization for regression tasks')
     visualize_label(hyper_labels[:, :, -n_reg_tasks:], reg_label_names, save_path)
 
     image_norm_name = '%s/image_norm_%s.pt' % (save_path, options.normalize_method)

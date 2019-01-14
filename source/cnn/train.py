@@ -164,10 +164,12 @@ def main():
 
     R, C, num_bands = hyper_image.shape
 
-    mask = torch.sum(hyper_image, dim=2)
+    mask = torch.sum(hyper_labels_reg, dim=2)
     train_set, val_set = split_data(R, C, mask, options.patch_size, options.patch_stride)
 
+    print('Data distribution on training set')
     compute_data_distribution(hyper_labels_cls, train_set, categorical)
+    print('Data distribution on validation set')
     compute_data_distribution(hyper_labels_cls, val_set, categorical)
 
     # Model construction

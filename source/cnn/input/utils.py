@@ -9,13 +9,14 @@ import string
 
 
 def format_filename(s):
-    """Take a string and return a valid filename constructed from the string.
-Uses a whitelist approach: any characters not present in valid_chars are
-removed. Also spaces are replaced with underscores.
+    """
+    Take a string and return a valid filename constructed from the string.
+    Uses a whitelist approach: any characters not present in valid_chars are
+    removed. Also spaces are replaced with underscores.
 
-Note: this method may produce invalid file names such as ``, `.` or `..`
+    Note: this method may produce invalid file names such as ``, `.` or `..`
 
-"""
+    """
     valid_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
     filename = ''.join(c for c in s if c in valid_chars)
     filename = filename.replace(' ', '_')
@@ -227,11 +228,14 @@ def compute_data_distribution(labels, dataset, categorical):
     num_classes = 0
     for idx, (key, values) in enumerate(categorical.items()):
         count = len(values)
-        indices = torch.argmax(data_labels[:, num_classes:(num_classes+count)])
+        indices = torch.argmax(data_labels[:, num_classes:(num_classes+count)], dim=-1)
         unique_values, unique_count = np.unique(indices, return_counts=True)
-        percentage = unique_count / np.sum(unique_count)
+        percentage = 100 * unique_count / np.sum(unique_count)
+        num_classes += count
 
-        print('Dataset distribution for task {}: classes={}, percentage={}'.format(
+        print('Dataset distribution for task {}: classes={}, percentage={}, count={}'.format(
             key,
             values[unique_values],
-            " ".join(map("{:.2f}%".format, percentage))))
+            " ".join(map("{:.2f}%".format, percentage)),
+            unique_count
+        ))
