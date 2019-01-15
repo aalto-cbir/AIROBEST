@@ -29,7 +29,9 @@ srun python -u preprocess.py    -save_dir ${SAVE_DIR} \
                                 -metadata_file_name metadata \
                                 -normalize_method l2norm_along_channel \
                                 -hyper_data_path /proj/deepsat/hyperspectral/${HYP_IMAGE} \
-                                -forest_data_path /proj/deepsat/hyperspectral/forestdata.hdr
+                                -forest_data_path /proj/deepsat/hyperspectral/forestdata.hdr \
+                                -ignore_zero_labels True \
+                                -label_normalize_method clip
 
 echo -e "\n ... printing job stats .... \n"
 used_slurm_resources.bash

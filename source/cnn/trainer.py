@@ -216,7 +216,7 @@ class Trainer(object):
 
             metric = epoch_loss
             if val_loader is not None:
-                val_loss, val_avg_accuracy, val_accuracies, conf_matrices = self.validate(val_loader)
+                val_loss, val_avg_accuracy, val_accuracies, conf_matrices = self.validate(e, val_loader)
                 print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
                       .format(val_loss, val_avg_accuracy.data.numpy(), val_accuracies.data.numpy()))
                 val_losses.append(val_loss)
@@ -258,44 +258,71 @@ class Trainer(object):
                     break
             print('Current learning rate: {}'.format(lr))
 
-    def validate(self, val_loader):
+    def validate(self, epoch, val_loader):
         # set model in validation mode
         self.modelTrain.eval()
         self.modelTrain.model.eval()
 
         sum_loss = 0
-        N_samples = 0
+        N_samples = len(val_loader.dataset)
         val_accuracies = torch.tensor([0.0] * len(self.categorical))
-        pred_indices = torch.tensor([], dtype=torch.long, device=self.device)
-        tgt_indices = torch.tensor([], dtype=torch.long, device=self.device)
+        pred_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
+        tgt_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
+        all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
+        all_tgt_reg = torch.tensor([], dtype=torch.float)   # on cpu
+
         for idx, (src, tgt_cls, tgt_reg) in enumerate(val_loader):
             src = src.to(self.device, dtype=torch.float32)
             tgt_cls = tgt_cls.to(self.device, dtype=torch.float32)
             tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
-            N_samples += len(src)
 
             with torch.no_grad():
-                task_loss, pred_cls, pred_reg = self.modelTrain(src, tgt_cls, tgt_reg)
+                task_loss, batch_pred_cls, batch_pred_reg = self.modelTrain(src, tgt_cls, tgt_reg)
+
                 weighted_task_loss = self.modelTrain.task_weights * task_loss
                 loss = torch.sum(weighted_task_loss)
 
                 sum_loss += loss.item()
-                batch_accuracies, batch_pred_indices, batch_tgt_indices = self.compute_accuracy(pred_cls, tgt_cls)
+                batch_accuracies, batch_pred_indices, batch_tgt_indices = self.compute_accuracy(batch_pred_cls, tgt_cls)
                 val_accuracies += batch_accuracies
-                pred_indices = torch.cat((pred_indices, batch_pred_indices), dim=0)
-                tgt_indices = torch.cat((tgt_indices, batch_tgt_indices), dim=0)
+                # concat batch predictions
+                pred_cls_indices = torch.cat((pred_cls_indices, batch_pred_indices), dim=0)
+                tgt_cls_indices = torch.cat((tgt_cls_indices, batch_tgt_indices), dim=0)
+
+                batch_pred_reg = batch_pred_reg.to(torch.device('cpu'))
+                tgt_reg = tgt_reg.to(torch.device('cpu'))
+                all_tgt_reg = torch.cat((all_tgt_reg, tgt_reg), dim=0)
+                all_pred_reg = torch.cat((all_pred_reg, batch_pred_reg), dim=0)
 
         # return average validation loss
         average_loss = sum_loss / len(val_loader)
-        val_accuracies = val_accuracies * 100 / len(val_loader.dataset)
+        val_accuracies = val_accuracies * 100 / N_samples
         avg_accuracy = torch.mean(val_accuracies)
         conf_matrices = []
-        for i in range(tgt_indices.shape[-1]):
-            conf_matrix = confusion_matrix(tgt_indices[:, i], pred_indices[:, i])
+        for i in range(tgt_cls_indices.shape[-1]):
+            conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
             # convert to percentage along rows
             conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
             conf_matrix = 100*np.around(conf_matrix, decimals=2)
             conf_matrices.append(conf_matrix)
+
+        # scatter plot prediction vs target labels
+        X = torch.tensor([], dtype=torch.float)
+        Y = torch.tensor([], dtype=torch.long)
+        if epoch % 5 == 1:
+            n_cls = self.modelTrain.model.n_cls
+            n_reg = self.modelTrain.model.n_reg
+            for i in range(n_reg):
+                points = torch.cat((all_tgt_reg[:, i:i+1], all_pred_reg[:, i:i+1]), dim=1)
+                X = torch.cat((X, points), dim=0)
+                Y = torch.cat((Y, torch.ones(N_samples).fill_(i + 1).long()), dim=0)
+
+            self.visualizer.scatter(X, Y, opts=dict(
+                title='Regression predictions at epoch {}'.format(epoch),
+                legend=list(range(n_cls, n_cls + n_reg)),
+                markercolor=np.floor(np.random.random((n_reg, 3)) * 255)
+            ))
+
         return average_loss, avg_accuracy, val_accuracies, conf_matrices
 
     def compute_accuracy(self, predict, tgt):

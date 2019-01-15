@@ -214,9 +214,9 @@ def save_as_rgb(hyper_image, wavelength, path):
 
 def compute_data_distribution(labels, dataset, categorical):
     """
-
-    :param labels:
-    :param dataset:
+    Compute data distribution in training and validation sets
+    :param labels: processed target labels
+    :param dataset: training or validation set
     :param categorical: dictionary contains class info (equivalent to  metadata['categorical'])
     :return:
     """
