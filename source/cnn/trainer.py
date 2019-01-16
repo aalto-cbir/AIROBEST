@@ -4,6 +4,7 @@ import torch
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 
 
 class Trainer(object):
@@ -20,6 +21,14 @@ class Trainer(object):
         self.categorical = metadata['categorical']
         self.visualizer = visualizer
         self.checkpoint = checkpoint
+
+        save_dir = self.options.save_dir or self.options.model
+        self.ckpt_path = './checkpoint/{}'.format(save_dir)
+        self.image_path = './checkpoint/{}/images'.format(save_dir)
+        if not os.path.exists(self.ckpt_path):
+            os.makedirs(self.ckpt_path)
+        if not os.path.exists(self.image_path):
+            os.makedirs(self.image_path)
 
     def train(self, train_loader, val_loader):
         epoch = self.options.epoch
@@ -226,7 +235,7 @@ class Trainer(object):
                 metric = val_loss
                 # metric = -val_avg_accuracy
 
-                if e % 5 == 1:
+                if (e % 10 == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
                             'title': '{} at epoch {}'.format(label_names[i], e)
@@ -309,19 +318,43 @@ class Trainer(object):
         # scatter plot prediction vs target labels
         X = torch.tensor([], dtype=torch.float)
         Y = torch.tensor([], dtype=torch.long)
-        if epoch % 5 == 1:
+        if epoch % 10 == 1 or epoch == self.options.epoch:
             n_cls = self.modelTrain.model.n_cls
             n_reg = self.modelTrain.model.n_reg
-            for i in range(n_reg):
-                points = torch.cat((all_tgt_reg[:, i:i+1], all_pred_reg[:, i:i+1]), dim=1)
-                X = torch.cat((X, points), dim=0)
-                Y = torch.cat((Y, torch.ones(N_samples).fill_(i + 1).long()), dim=0)
 
-            self.visualizer.scatter(X, Y, opts=dict(
-                title='Regression predictions at epoch {}'.format(epoch),
-                legend=list(range(n_cls, n_cls + n_reg)),
-                markercolor=np.floor(np.random.random((n_reg, 3)) * 255)
-            ))
+            cmap = plt.get_cmap('gnuplot')
+            colors = [cmap(i) for i in np.linspace(0, 1, n_reg)]
+            # TODO: get names from metadata
+            names = list(range(n_cls, n_cls + n_reg))
+            for i in range(n_reg):
+                x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
+                fig, ax = plt.subplots()
+                ax.scatter(x, y, s=2, c=colors[i], label='Task_{}'.format(names[i]))
+                plt.ylim(top=1.3, bottom=-0.2)
+                ax.set_xlabel('Target')
+                ax.set_ylabel('Prediction')
+                ax.set_title('Task {}'.format(names[i]))
+                fig.savefig('{}/task_{}_e{}'.format(self.image_path, names[i], epoch))
+                plt.close(fig)
+
+
+            # for i in range(n_reg):
+            #     points = torch.cat((all_tgt_reg[:, i:i+1], all_pred_reg[:, i:i+1]), dim=1)
+            #     X = torch.cat((X, points), dim=0)
+            #     Y = torch.cat((Y, torch.ones(len(all_tgt_reg)).fill_(i + 1).long()), dim=0)
+            #
+            # np.random.seed(123)
+            # colors = np.floor(np.random.random((n_reg, 3)) * 255)
+            # self.visualizer.scatter(X, Y, opts=dict(
+            #     title='Regression predictions at epoch {}'.format(epoch),
+            #     xlabel='Target',
+            #     ylabel='Prediction',
+            #     legend=list(range(n_cls, n_cls + n_reg)),
+            #     markersize=2,
+            #     markercolor=colors
+            # ))
+
+
 
         return average_loss, avg_accuracy, val_accuracies, conf_matrices
 
@@ -368,11 +401,6 @@ class Trainer(object):
         :param epoch: the epoch when model is saved
         :return:
         """
-        save_dir = self.options.save_dir or self.options.model
-        path = './checkpoint/{}'.format(save_dir)
-        if not os.path.exists(path):
-            os.makedirs(path)
-
         state = {
             'epoch': epoch,
             'train_step': train_step,
@@ -381,5 +409,5 @@ class Trainer(object):
             'optimizer': self.optimizer.state_dict(),
             'options': self.options
         }
-        torch.save(state, '{}/{}_{}.pt'.format(path, save_dir, epoch))
+        torch.save(state, '{}/model_{}.pt'.format(self.ckpt_path, epoch))
         print('Saved model at epoch %d' % epoch)
