@@ -66,7 +66,7 @@ def parse_args():
                         required=False, default=[0, 1, 2, 9],
                         help='List of band indices in the target labels for categorical tasks')
     parser.add_argument('-ignored_bands', nargs='+',
-                        required=False, default=[3],
+                        required=False, default=[3, 8],
                         help='List of band indices in the target labels to ignore')
     parser.add_argument('-ignore_zero_labels', type=bool,
                         default=True,

@@ -324,11 +324,13 @@ class Trainer(object):
             for i in range(n_reg):
                 x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
                 fig, ax = plt.subplots()
-                ax.scatter(x, y, s=2, c=colors[i], label='Task_{}'.format(names[i]))
+                ax.scatter(x, y, s=2, c=colors[i])
+                ax.plot([0, 1], [0, 1], c='c', linestyle='--', alpha=0.7, label='Ideal prediction')
                 plt.ylim(top=1.3, bottom=-0.2)
                 ax.set_xlabel('Target')
                 ax.set_ylabel('Prediction')
                 ax.set_title('Task {}'.format(names[i]))
+                # ax.legend()
                 fig.savefig('{}/task_{}_e{}'.format(self.image_path, names[i], epoch))
                 plt.close(fig)
 

@@ -165,7 +165,10 @@ def main():
 
     R, C, num_bands = hyper_image.shape
 
-    mask = torch.sum(hyper_labels_reg, dim=2) if metadata['ignore_zero_labels'] else norm_inv
+    # use percentage of main tree species as mask if ignore_zero_labels is True
+    # => only care about forest areas
+    idx = np.where(metadata['reg_label_names'] == 'percentage_mainspecies')[0]
+    mask = hyper_labels_reg[:, :, idx] if metadata['ignore_zero_labels'] else norm_inv
     train_set, val_set = split_data(R, C, mask, options.patch_size, options.patch_stride)
 
     print('Data distribution on training set')

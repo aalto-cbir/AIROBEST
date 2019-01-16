@@ -25,6 +25,7 @@ HYP_IMAGE=20170615_reflectance_mosaic_128b.hdr
 srun python -u preprocess.py    -save_dir ${SAVE_DIR} \
                                 -src_file_name hyperspectral_src \
                                 -categorical_bands 0 1 2 9 \
+                                -ignored_bands 3 8 \
                                 -tgt_file_name hyperspectral_tgt_normalized \
                                 -metadata_file_name metadata \
                                 -normalize_method l2norm_along_channel \
