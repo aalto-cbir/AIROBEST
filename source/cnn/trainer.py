@@ -53,8 +53,7 @@ class Trainer(object):
         task_weights_window = None
         gradnorm_loss_window = None
         accuracy_window = None
-        # TODO: get from metadata
-        label_names = ['Fertility class', 'Soil type', 'Development class', 'Main tree species']
+        label_names = self.metadata['cls_label_names']
 
         losses = []
 
@@ -316,16 +315,12 @@ class Trainer(object):
             conf_matrices.append(conf_matrix)
 
         # scatter plot prediction vs target labels
-        X = torch.tensor([], dtype=torch.float)
-        Y = torch.tensor([], dtype=torch.long)
         if epoch % 10 == 1 or epoch == self.options.epoch:
-            n_cls = self.modelTrain.model.n_cls
             n_reg = self.modelTrain.model.n_reg
 
-            cmap = plt.get_cmap('gnuplot')
+            cmap = plt.get_cmap('viridis')
             colors = [cmap(i) for i in np.linspace(0, 1, n_reg)]
-            # TODO: get names from metadata
-            names = list(range(n_cls, n_cls + n_reg))
+            names = self.metadata['reg_label_names']
             for i in range(n_reg):
                 x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
                 fig, ax = plt.subplots()
@@ -336,25 +331,6 @@ class Trainer(object):
                 ax.set_title('Task {}'.format(names[i]))
                 fig.savefig('{}/task_{}_e{}'.format(self.image_path, names[i], epoch))
                 plt.close(fig)
-
-
-            # for i in range(n_reg):
-            #     points = torch.cat((all_tgt_reg[:, i:i+1], all_pred_reg[:, i:i+1]), dim=1)
-            #     X = torch.cat((X, points), dim=0)
-            #     Y = torch.cat((Y, torch.ones(len(all_tgt_reg)).fill_(i + 1).long()), dim=0)
-            #
-            # np.random.seed(123)
-            # colors = np.floor(np.random.random((n_reg, 3)) * 255)
-            # self.visualizer.scatter(X, Y, opts=dict(
-            #     title='Regression predictions at epoch {}'.format(epoch),
-            #     xlabel='Target',
-            #     ylabel='Prediction',
-            #     legend=list(range(n_cls, n_cls + n_reg)),
-            #     markersize=2,
-            #     markercolor=colors
-            # ))
-
-
 
         return average_loss, avg_accuracy, val_accuracies, conf_matrices
 

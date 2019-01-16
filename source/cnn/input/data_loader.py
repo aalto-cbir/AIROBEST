@@ -11,7 +11,7 @@ class HypDataset(data.Dataset):
     - {train/test/val}.npy: contain pixel coordinates for each train/test/val set
     """
 
-    def __init__(self, hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name,
+    def __init__(self, hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name,
                  is_3d_convolution=False):
         """
 
@@ -22,7 +22,7 @@ class HypDataset(data.Dataset):
         :param hyperparams:
         """
         self.hyper_image = hyper_image
-        self.norm_inv = norm_inv
+        self.multiplier = multiplier
         self.img_min, self.img_max = torch.min(hyper_image).float(), torch.max(hyper_image).float()
         print('Max pixel %s, min pixel: %s' % (self.img_max, self.img_min))
         self.hyper_labels_cls = hyper_labels_cls
@@ -46,8 +46,8 @@ class HypDataset(data.Dataset):
         row, col = self.coords[idx]
 
         src = get_patch(self.hyper_image, row, col, self.patch_size).float()
-        if self.norm_inv is not None:
-            src_norm_inv = get_patch(self.norm_inv, row, col, self.patch_size)
+        if self.multiplier is not None:
+            src_norm_inv = get_patch(self.multiplier, row, col, self.patch_size)
             src_norm_inv = torch.unsqueeze(src_norm_inv, -1)
             src = src * src_norm_inv
         else:
@@ -73,9 +73,9 @@ class HypDataset(data.Dataset):
         return len(self.coords)
 
 
-def get_loader(hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, batch_size, patch_size=11,
+def get_loader(hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, batch_size, patch_size=11,
                model_name='ChenModel', shuffle=False, num_workers=0, is_3d_convolution=False):
-    dataset = HypDataset(hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, patch_size,
+    dataset = HypDataset(hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, patch_size,
                          model_name=model_name, is_3d_convolution=is_3d_convolution)
 
     data_loader = data.DataLoader(dataset=dataset,

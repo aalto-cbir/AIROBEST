@@ -336,7 +336,6 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
 
     metadata['categorical'] = categorical
     metadata['num_classes'] = num_classes
-    metadata['ignore_zero_labels'] = options.ignore_zero_labels
 
     return normalized_labels, metadata
 
@@ -370,7 +369,7 @@ def main():
     reg_task_indices = np.array(range(hyper_labels.shape[-1]))
     reg_task_indices = np.delete(reg_task_indices, np.append(options.categorical_bands, options.ignored_bands))
     reg_label_names = band_names[reg_task_indices]
-    n_reg_tasks = 13
+    n_reg_tasks = len(reg_task_indices)
     sum_pixels = np.sum(hyper_image, axis=-1)
     zero_count = R * C - np.count_nonzero(sum_pixels)
     print('Zero count in image:', R, C, B, sum_pixels.shape, zero_count)
@@ -393,6 +392,9 @@ def main():
     metadata_name = '%s/%s.pt' % (save_path, options.metadata_file_name)
     src_name = '%s/%s.pt' % (save_path, options.src_file_name)
 
+    metadata['cls_label_names'] = cls_label_names
+    metadata['reg_label_names'] = reg_label_names
+    metadata['ignore_zero_labels'] = options.ignore_zero_labels
     print('Metadata values: ', metadata)
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)

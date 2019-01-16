@@ -86,6 +86,7 @@ def parse_args():
     train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights'],
                        default='grad_norm',
                        help="Specify loss balancing method for multi-task learning")
+
     opt = parser.parse_args()
 
     return opt
@@ -164,7 +165,7 @@ def main():
 
     R, C, num_bands = hyper_image.shape
 
-    mask = torch.sum(hyper_labels_reg, dim=2)
+    mask = torch.sum(hyper_labels_reg, dim=2) if metadata['ignore_zero_labels'] else norm_inv
     train_set, val_set = split_data(R, C, mask, options.patch_size, options.patch_stride)
 
     print('Data distribution on training set')
@@ -193,11 +194,10 @@ def main():
     # loss = nn.CrossEntropyLoss()
     # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
 
-    # TODO: refactor
-    if options.input_normalize_method == 'minmax_scaling':
-        norm_inv = None
+    multiplier = None if options.input_normalize_method == 'minmax_scaling' else norm_inv
+
     train_loader = get_loader(hyper_image,
-                              norm_inv,
+                              multiplier,
                               hyper_labels_cls,
                               hyper_labels_reg,
                               train_set,
@@ -207,7 +207,7 @@ def main():
                               patch_size=options.patch_size,
                               shuffle=True)
     val_loader = get_loader(hyper_image,
-                            norm_inv,
+                            multiplier,
                             hyper_labels_cls,
                             hyper_labels_reg,
                             val_set,
