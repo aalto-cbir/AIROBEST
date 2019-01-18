@@ -1,11 +1,18 @@
 """
 Copyright (C) 2017,2018  Matti Mõttus 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
-You should have received a copy of the GNU General Public License along with this program.  If not, see <https://www.gnu.org/licenses/>.
+This program is free software: you can redistribute it and/or modify it under 
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 # Allometric functions for pine, spruce and birch for Finland
-# treespecies numbering as common in forestry practice: 1=pine, 2=spruce 3=birch (can include other broadleaves), etc.
+# treespecies numbering as common in forestry practice: 1=pine, 2=spruce 3=birch
+#   (can include other broadleaves), etc.
 
 import numpy as np
 
@@ -23,17 +30,18 @@ def dlw( treespecies, treeheight, trunkdiameter ):
     dS = 2+1.25*trunkdiameter
     if treespecies == 1:
         # pine
-        dlw_i = np.exp( -6.303 + 14.472*dS/(dS+6) -3.976*h/(h+1)  + (0.109+0.118)/2 ) 
+        dlw_i = np.exp( -6.303 + 14.472*dS/(dS+6) -3.976*h/(h+1) + (0.109+0.118)/2 ) 
     elif treespecies == 2:
         # spruce
-        dlw_i = np.exp( -2.994 + 12.251*dS/(dS+10) -3.415*h/(h+1)  +  (0.107+0.089)/2 )
+        dlw_i = np.exp( -2.994 + 12.251*dS/(dS+10) -3.415*h/(h+1) +  (0.107+0.089)/2 )
     else:
         # birch or other broadleaf
-        if trunkdiameter_i > 11:
+        if trunkdiameter > 11:
             # Repola (2008) had only large trees in the sample
             dlw_i = np.exp( -29.566 + 33.372*dS/(dS+2)  + 0.077/2 )# kg
         else:
-            # Johansson 1999 -- note: this produces large leaf mass estimates for the upper range (12-13cm) 
+            # Johansson 1999 -- note: this produces large leaf mass estimates 
+            #   for the upper range (12-13cm) 
             dlw_i = 0.00371*( dS*10 ) ** 1.11993 # kg
     return dlw_i
 
@@ -81,7 +89,8 @@ def STAR( treespecies ):
     
 def crownradius( treespecies, trunkdiameter, model="NS" ):
     # crown radius of a tree
-    # crownradius as used by Majasalmi et al. 2013: Jakobsons 1970, Northern Sweden (Southern also available)
+    # crownradius as used by Majasalmi et al. 2013: Jakobsons 1970, Northern Sweden 
+    #   (Southern also available)
     dS = 2+1.25*trunkdiameter
     if treespecies == 1:
         # pine

@@ -20,6 +20,8 @@ import os
 import time
 from scipy.optimize import curve_fit, least_squares
 
+import tools.spectralinvariants
+
 def p_processing( filename1, refspecno, wl_p, filename2, filename3, tkroot=None, file2_handle=None, file2_datahandle=None, progressvar=None ):
     """
     the actual function which does the processing
@@ -138,8 +140,8 @@ def p_processing( filename1, refspecno, wl_p, filename2, filename3, tkroot=None,
             for hyp_pixel,p_pixel in zip(hyp_line,p_line):
                 if hyp_pixel[ DIV_testpixel ] != DIV:
                     hyp_refl_subset = ( hyp_pixel[ wl_p ]*hypdata_factor )
-                    # p_from_data_old( hyp_refl_subset, refspec_hyp_subset, p_pixel )
-                    p_from_data( hyp_refl_subset, refspec_hyp_subset, p_pixel )
+                    # tools.spectralinvariants.p_forpixel_old( hyp_refl_subset, refspec_hyp_subset, p_pixel )
+                    tools.spectralinvariants.p_forpixel( hyp_refl_subset, refspec_hyp_subset, p_pixel )
                 else:
                     p_pixel.fill(0)
 
@@ -154,54 +156,6 @@ def p_processing( filename1, refspecno, wl_p, filename2, filename3, tkroot=None,
     else:
         print(" p_processing done")
     print( "time spent: " + str( round(t_1-t_0) ) + "s, process time: " + str( round(t_1p-t_0p)) + "s" )
-
-def p_from_data( hypdata, refspectrum, p_values ):
-    """ the actual calculation of p (fitting a line). 
-    Implementation from scratch
-    p_values:output, ndarray of length 4
-      0:slope 1:intercept 2: DASF 3:R
-    """
-    # possible implementation (in Scilab notation)
-    #   Sxx       = sum(x^2)-sum(x)^2/n 
-    #   Syy       = sum(y^2)-sum(y)^2/n
-    #   Sxy       = sum(x.*y)-sum(x)*sum(y)/n
-    #   slope     = Sxy/Sxx
-    #   intercept = mean(y) - slope*mean(x)
-    #   rxy       = Sxy/sqrt(Sxx*Syy) # Correlation coefficient
-
-    y_DASF = hypdata / refspectrum
-    
-    n = hypdata.shape[0]
-    Sx = hypdata.sum()
-    Sxx = ( hypdata*hypdata ).sum() - Sx*Sx/n
-    Sy = y_DASF.sum()
-    Syy = ( y_DASF*y_DASF ).sum() - Sy*Sy/n
-    Sxy = ( hypdata*y_DASF ).sum() - Sx*Sy/n
-    p_values[0] = Sxy/Sxx # p = slope
-    p_values[1] = (Sy - p_values[0]*Sx)/n # rho = intercept
-    p_values[2] = p_values[1]/(1-p_values[0]) # DASF
-    p_values[3] = Sxy/np.sqrt( Sxx*Syy ) # R
-   
-def p_from_data_old( hypdata, refspectrum, p_values ):
-    """ the actual calculation of p (fitting a line). Several options possible, 
-       based on different functions available in numpy. 
-       All include some overhead (computation of unneeded quantities)
-    p_values:output, ndarray of length 4
-      0:slope 1:intercept 2: DASF 3:R
-    """    
-    y_DASF = hypdata / refspectrum
-    
-    # linear regression with scipy
-    # p_model = stats.linregress( hypdata, y_DASF )
-    # p_values[0] = p_model.slope
-    # p_values[1] = p_model.intercept
-    # p_values[3] = p_model.rvalue
-    
-    # linear regression with numpy 
-    iph = np.ones_like( hypdata ) # placeholders for linalg.lstsq
-    p_values[0], p_values[1] = np.linalg.lstsq( np.vstack( [ hypdata, np.ones_like( hypdata ) ] ).T, y_DASF.T)[0]
-    p_values[3] = np.corrcoef( hypdata, y_DASF )[0][1]
-    p_values[2] = p_values[1]/(1-p_values[0]) # DASF
 
 def W_processing( filename1, filename2, filename3, DASFnumber=0, hypdata=None, hypdata_map=None, DASFdata=None, DASFdata_map=None, progressvar=None ):
     """
