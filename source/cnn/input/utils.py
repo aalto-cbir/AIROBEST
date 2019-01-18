@@ -5,6 +5,7 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 import torch
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import string
 
 
@@ -179,6 +180,26 @@ def visualize_label(target_labels, label_names, save_path):
     print('-------Done visualizing labels--------')
 
 
+def plot_largest_error_patches(task_label, topk_points, patch_size, task_name, path, epoch):
+    x = topk_points[:, 1] - patch_size // 2
+    y = topk_points[:, 0] - patch_size // 2
+    fig, ax = plt.subplots(figsize=(25, 25))
+    ax.grid(False)
+    ax.set_title('Top 10% errors of {}'.format(task_name))
+    im = ax.imshow(task_label, cmap='viridis', aspect='auto')
+    plt.axis('off')
+    # ax.scatter(x, y, s=50, c='r')
+    for i in range(len(x)):
+        rect = patches.Rectangle((x[i], y[i]), width=patch_size, height=patch_size,
+                                 edgecolor='r', linewidth=2, facecolor='none')
+        ax.add_patch(rect)
+    # ax.plot(x_points, y_points, 'ro')
+    save_name = '{}/topk_{}_e{}'.format(path, task_name, epoch)
+    fig.savefig(save_name)
+    plt.close(fig)
+    # resize_img(save_name, 2500)
+
+
 def save_as_rgb(hyper_image, wavelength, path):
     """
     Save hyperspectral in rgb format
@@ -225,17 +246,29 @@ def compute_data_distribution(labels, dataset, categorical):
         data_labels.append(labels[r, c, :])
 
     data_labels = torch.stack(data_labels, dim=0)
+    weights = []
     num_classes = 0
     for idx, (key, values) in enumerate(categorical.items()):
         count = len(values)
         indices = torch.argmax(data_labels[:, num_classes:(num_classes+count)], dim=-1)
         unique_values, unique_count = np.unique(indices, return_counts=True)
-        percentage = 100 * unique_count / np.sum(unique_count)
+        percentage = unique_count / np.sum(unique_count)
+        class_weight = torch.from_numpy(1 - percentage).float()
+        # class_weight = torch.from_numpy(np.max(percentage) / percentage).float()
+        weights.append(class_weight)
+
+        # inverse median frequency
+        # median = np.median(percentage)
+        # task_weight = median / percentage
+        # weights.append(torch.from_numpy(task_weight).float())
+
         num_classes += count
 
+        print('Class weight:', class_weight)
         print('Dataset distribution for task {}: classes={}, percentage={}, count={}'.format(
             key,
             values[unique_values],
-            " ".join(map("{:.2f}%".format, percentage)),
+            " ".join(map("{:.2f}%".format, 100*percentage)),
             unique_count
         ))
+    return weights

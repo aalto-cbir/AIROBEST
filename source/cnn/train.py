@@ -86,6 +86,9 @@ def parse_args():
     train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights'],
                        default='grad_norm',
                        help="Specify loss balancing method for multi-task learning")
+    train.add_argument('-class_balancing', type=bool,
+                       default=True,
+                       help="Specify if class balancing should be used")
 
     opt = parser.parse_args()
 
@@ -117,7 +120,6 @@ def main():
     print('Numpy version: ', np.__version__)
     print('Torch version: ', torch.__version__)
     #######
-
     checkpoint = None
     options = parse_args()
 
@@ -172,26 +174,30 @@ def main():
     train_set, val_set = split_data(R, C, mask, options.patch_size, options.patch_stride)
 
     print('Data distribution on training set')
-    compute_data_distribution(hyper_labels_cls, train_set, categorical)
+    class_weights = compute_data_distribution(hyper_labels_cls, train_set, categorical)
     print('Data distribution on validation set')
-    compute_data_distribution(hyper_labels_cls, val_set, categorical)
+    _ = compute_data_distribution(hyper_labels_cls, val_set, categorical)
 
     # Model construction
     model_name = options.model
 
+    loss_reg = nn.MSELoss()
+    loss_cls_list = []
+
+    if options.class_balancing:
+        for i in range(len(categorical.keys())):
+            loss_cls_list.append(nn.CrossEntropyLoss(weight=class_weights[i].to(device)))
+    else:
+        for i in range(len(categorical.keys())):
+            loss_cls_list.append(nn.CrossEntropyLoss())
+
     if model_name == 'ChenModel':
         model = ChenModel(num_bands, out_cls, out_reg, patch_size=options.patch_size, n_planes=32)
-        loss_cls = nn.BCELoss()
-        loss_reg = nn.MSELoss()
     elif model_name == 'PhamModel':
         model = PhamModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
-        loss_cls = nn.BCELoss()
-        loss_reg = nn.MSELoss()
         # loss_reg = nn.L1Loss()
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, out_cls, out_reg)
-        loss_cls = nn.BCELoss()
-        loss_reg = nn.MSELoss()
 
     # loss = nn.BCEWithLogitsLoss()
     # loss = nn.CrossEntropyLoss()
@@ -221,7 +227,7 @@ def main():
                             shuffle=True)
 
     print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
-    modelTrain = ModelTrain(model, loss_cls, loss_reg, metadata, options)
+    modelTrain = ModelTrain(model, loss_cls_list, loss_reg, metadata, options)
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
     modelTrain = modelTrain.to(device)
     optimizer = optim.Adam(modelTrain.parameters(), lr=options.lr)
@@ -234,7 +240,7 @@ def main():
 
     with torch.no_grad():
         print('Model summary: ')
-        for input, _, _ in train_loader:
+        for input, _, _, _ in train_loader:
             break
 
         summary(modelTrain.model,
@@ -244,12 +250,12 @@ def main():
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     print(modelTrain)
-    print('Classification loss function:', loss_cls)
+    print('Classification loss function:', loss_cls_list)
     print('Regression loss function:', loss_reg)
     print('Scheduler:', scheduler.__dict__)
 
-    trainer = Trainer(modelTrain, optimizer, loss_cls, loss_reg, scheduler,
-                      device, visualizer, metadata, options, checkpoint)
+    trainer = Trainer(modelTrain, optimizer, scheduler, device, visualizer, metadata,
+                      options, hyper_labels_reg, checkpoint)
     trainer.train(train_loader, val_loader)
     print('End training...')
 

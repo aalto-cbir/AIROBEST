@@ -6,14 +6,14 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
+from input.utils import plot_largest_error_patches
+
 
 class Trainer(object):
-    def __init__(self, model, optimizer, criterion_cls, criterion_reg, scheduler, device,
-                 visualizer, metadata, options, checkpoint=None):
+    def __init__(self, model, optimizer, scheduler, device,
+                 visualizer, metadata, options, hyper_labels_reg, checkpoint=None):
         self.modelTrain = model
         self.optimizer = optimizer
-        self.criterion_cls = criterion_cls
-        self.criterion_reg = criterion_reg
         self.device = device
         self.scheduler = scheduler
         self.options = options
@@ -21,6 +21,7 @@ class Trainer(object):
         self.categorical = metadata['categorical']
         self.visualizer = visualizer
         self.checkpoint = checkpoint
+        self.hyper_labels_reg = hyper_labels_reg
 
         save_dir = self.options.save_dir or self.options.model
         self.ckpt_path = './checkpoint/{}'.format(save_dir)
@@ -69,7 +70,7 @@ class Trainer(object):
             self.modelTrain.model.train()
             epoch_loss = 0.0
 
-            for idx, (src, tgt_cls, tgt_reg) in enumerate(train_loader):
+            for idx, (src, tgt_cls, tgt_reg, data_idx) in enumerate(train_loader):
                 src = src.to(self.device, dtype=torch.float32)
                 tgt_cls = tgt_cls.to(self.device, dtype=torch.float32)
                 tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
@@ -119,7 +120,8 @@ class Trainer(object):
                     grad_norm_loss = torch.tensor(torch.sum(torch.abs(norms - constant_term)))
 
                     # compute the gradient for the weights
-                    self.modelTrain.task_weights.grad = torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
+                    self.modelTrain.task_weights.grad = \
+                    torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
                     # grad_norm_loss.backward()
                 else:
                     grad_norm_loss = torch.Tensor([0.0], device=self.device)
@@ -202,13 +204,14 @@ class Trainer(object):
                 self.save_checkpoint(e, train_step, initial_task_loss)
             epoch_loss = epoch_loss / len(train_loader)
             if self.options.loss_balancing == 'grad_norm':
-                print('Epoch {:<3}: Total loss={:.5f}, gradNorm_loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'.format(
-                    e,
-                    loss.item(),
-                    grad_norm_loss.data.cpu().numpy(),
-                    " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
-                    " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
-                    " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
+                print(
+                    'Epoch {:<3}: Total loss={:.5f}, gradNorm_loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'.format(
+                        e,
+                        loss.item(),
+                        grad_norm_loss.data.cpu().numpy(),
+                        " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
+                        " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
+                        " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
                 )
 
             train_accuracies = train_accuracies * 100 / len(train_loader.dataset)
@@ -237,7 +240,8 @@ class Trainer(object):
                 if (e % 10 == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
-                            'title': '{} at epoch {}'.format(label_names[i], e)
+                            'title': '{} at epoch {}'.format(label_names[i], e),
+                            'xmax': 100
                         })
 
             accuracy_list.append(accuracies.data.numpy())
@@ -277,12 +281,14 @@ class Trainer(object):
         pred_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
         tgt_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
         all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
-        all_tgt_reg = torch.tensor([], dtype=torch.float)   # on cpu
+        all_tgt_reg = torch.tensor([], dtype=torch.float)  # on cpu
+        data_indices = torch.tensor([], dtype=torch.long)
 
-        for idx, (src, tgt_cls, tgt_reg) in enumerate(val_loader):
+        for idx, (src, tgt_cls, tgt_reg, data_idx) in enumerate(val_loader):
             src = src.to(self.device, dtype=torch.float32)
             tgt_cls = tgt_cls.to(self.device, dtype=torch.float32)
             tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
+            data_indices = torch.cat((data_indices, data_idx), dim=0)
 
             with torch.no_grad():
                 task_loss, batch_pred_cls, batch_pred_reg = self.modelTrain(src, tgt_cls, tgt_reg)
@@ -311,7 +317,7 @@ class Trainer(object):
             conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
             # convert to percentage along rows
             conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
-            conf_matrix = 100*np.around(conf_matrix, decimals=2)
+            conf_matrix = 100 * np.around(conf_matrix, decimals=2)
             conf_matrices.append(conf_matrix)
 
         # scatter plot prediction vs target labels
@@ -325,7 +331,7 @@ class Trainer(object):
                 x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
                 fig, ax = plt.subplots()
                 ax.scatter(x, y, s=2, c=colors[i])
-                ax.plot([0, 1], [0, 1], c='c', linestyle='--', alpha=0.7, label='Ideal prediction')
+                ax.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.7, label='Ideal prediction')
                 plt.ylim(top=1.3, bottom=-0.2)
                 ax.set_xlabel('Target')
                 ax.set_ylabel('Prediction')
@@ -333,6 +339,37 @@ class Trainer(object):
                 # ax.legend()
                 fig.savefig('{}/task_{}_e{}'.format(self.image_path, names[i], epoch))
                 plt.close(fig)
+
+                # plot error histogram
+                mse_errors = (x - y) ** 2
+
+                n_bins = 100
+                fig, ax1 = plt.subplots()
+                ax1.set_xlabel('Error')
+                ax1.set_ylabel('Frequency')
+                counts, bins, _ = ax1.hist(mse_errors, n_bins, density=False, range=(0, 0.25),
+                                           facecolor='g', edgecolor='black', alpha=0.8)
+
+                freq_cumsum = np.cumsum(counts)
+                ax2 = ax1.twinx()
+                ax2.set_ylabel('Cumulative sum of frequency')
+                ax2.plot(bins[1:], freq_cumsum, c='b')
+
+                # err_cumsum = []
+                # for b in bins:
+                #     err_cumsum.append(torch.sum(mse_errors[mse_errors < b]))
+                # ax2.plot(bins, err_cumsum, c='r')
+                fig.savefig('{}/err_hist_{}_e{}'.format(self.image_path, names[i], epoch))
+                plt.close(fig)
+
+                # plot top k largest errors on the map
+                task_label = self.hyper_labels_reg[:, :, i]
+                k = N_samples // 10  # 10% of the largest error
+                value, indices = torch.topk(mse_errors, k, dim=0, largest=True, sorted=False)
+                coords = np.array(val_loader.dataset.coords)
+                topk_points = coords[indices]
+                plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
+                                           names[i], self.image_path, epoch)
 
         return average_loss, avg_accuracy, val_accuracies, conf_matrices
 

@@ -67,7 +67,7 @@ class HypDataset(data.Dataset):
         # Transform to 4D tensor for 3D convolution
         if self.is_3d_convolution and self.patch_size > 1:
             src = src.unsqueeze(0)
-        return src, tgt_cls, tgt_reg
+        return src, tgt_cls, tgt_reg, idx
 
     def __len__(self):
         return len(self.coords)

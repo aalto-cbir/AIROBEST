@@ -24,13 +24,14 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -patch_stride 2 \
                     -lr 0.0001 \
                     -batch_size 64 \
-                    -epoch 50 \
+                    -epoch 100 \
                     -model PhamModel \
                     -input_normalize_method minmax_scaling \
-                    -save_dir Pham-120119-full2 \
+                    -save_dir Pham-180119-f1-ncb \
                     -report_frequency 150 \
                     -loss_balancing equal_weights \
                     -visdom_server http://taito-gpu.csc.fi \
+                    -class_balancing False \
                     -gpu 0
 
 echo -e "\n ... printing job stats .... \n"

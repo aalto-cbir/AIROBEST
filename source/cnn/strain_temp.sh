@@ -30,10 +30,11 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -epoch 100 \
                     -model PhamModel \
                     -input_normalize_method minmax_scaling \
-                    -save_dir Pham-120119-subA1 \
+                    -save_dir Pham-160119-subA1 \
                     -report_frequency 20 \
-                    -loss_balancing equal_weights \
+                    -loss_balancing grad_norm \
                     -visdom_server http://taito-gpu.csc.fi \
+                    -class_balancing False \
                     -gpu 0
 
 echo -e "\n ... printing job stats .... \n"

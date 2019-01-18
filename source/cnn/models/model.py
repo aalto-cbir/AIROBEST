@@ -238,7 +238,8 @@ class PhamModel(nn.Module):
             layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
             layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
             x_cls = F.relu(layer1(x))
-            pred_cls = torch.cat((pred_cls, F.sigmoid(layer2(x_cls))), 1)
+            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
+            # pred_cls = torch.cat((pred_cls, layer2(x_cls)), 1)
         # for regression task
         pred_reg = torch.tensor([]).cuda()
         for i in range(self.n_reg):
@@ -251,12 +252,12 @@ class PhamModel(nn.Module):
 
 
 class ModelTrain(nn.Module):
-    def __init__(self, model, criterion_cls, criterion_reg, metadata, options):
+    def __init__(self, model, criterion_cls_list, criterion_reg, metadata, options):
         super(ModelTrain, self).__init__()
         self.model = model
         self.task_count = model.n_cls + model.n_reg
         self.task_weights = torch.nn.Parameter(torch.tensor([1.0]*self.task_count).float())
-        self.criterion_cls = criterion_cls
+        self.criterion_cls_list = criterion_cls_list
         self.criterion_reg = criterion_reg
         self.categorical = metadata['categorical']
         self.options = options
@@ -266,14 +267,16 @@ class ModelTrain(nn.Module):
         pred_cls, pred_reg = self.model(src)
         start = 0
 
-        for key, values in self.categorical.items():
+        for idx, (key, values) in enumerate(self.categorical.items()):
             n_classes = len(values)
-            prediction, target = pred_cls[:, start:(start+n_classes)], tgt_cls[:, start:(start+n_classes)]
-            # target = torch.argmax(target, dim=1).long()
             if self.options.disabled == 'classification':
                 single_loss = torch.tensor(0.0, device=tgt_cls.device)
             else:
-                single_loss = self.criterion_cls(prediction, target)
+                prediction, target = pred_cls[:, start:(start + n_classes)], tgt_cls[:, start:(start + n_classes)]
+                # for cross entropy loss
+                target = torch.argmax(target, dim=1).long()
+                criterion_cls = self.criterion_cls_list[idx]
+                single_loss = criterion_cls(prediction, target)
 
             task_loss.append(single_loss)
             start += n_classes
