@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import string
 import scipy.stats as stats
-import seaborn as sns; sns.set(style="white", color_codes=True)
+import seaborn as sns
+sns.set(style="white", color_codes=True)
 
 
 def format_filename(s):
@@ -34,15 +35,15 @@ def envi2world(pointmatrix_local, GT):
     """
 
     # transform to hyperspectral figure coordinates
-    P = pointmatrix_local[:,0] + 0.5 # relative to pixel corner
-    L = pointmatrix_local[:,1] + 0.5
-    xy = np.column_stack(  ( GT[0] + P*GT[1] + L*GT[2],
-                    GT[3] + P*GT[4] + L*GT[5] ) )
+    P = pointmatrix_local[:, 0] + 0.5  # relative to pixel corner
+    L = pointmatrix_local[:, 1] + 0.5
+    xy = np.column_stack((GT[0] + P * GT[1] + L * GT[2],
+                          GT[3] + P * GT[4] + L * GT[5]))
 
     return xy
 
 
-def world2envi(pointmatrix, GT ):
+def world2envi(pointmatrix, GT):
     """
     convert the (usually projected) world coordiates in pointmatrix to the image
     coordinates of envihdrfilename (relative to pixel center).
@@ -50,11 +51,11 @@ def world2envi(pointmatrix, GT ):
     """
 
     # transform to hyperspectral figure coordinates
-    X = pointmatrix[:,0]
-    Y = pointmatrix[:,1]
-    D = GT[1]*GT[5] - GT[2]*GT[4]
-    xy = np.column_stack( ( ( X*GT[5] - GT[0]*GT[5] + GT[2]*GT[3] - Y*GT[2] ) / D - 0.5 ,
-         ( Y*GT[1] - GT[1]*GT[3] + GT[0]*GT[4] - X*GT[4] ) / D - 0.5 ) )
+    X = pointmatrix[:, 0]
+    Y = pointmatrix[:, 1]
+    D = GT[1] * GT[5] - GT[2] * GT[4]
+    xy = np.column_stack(((X * GT[5] - GT[0] * GT[5] + GT[2] * GT[3] - Y * GT[2]) / D - 0.5,
+                          (Y * GT[1] - GT[1] * GT[3] + GT[0] * GT[4] - X * GT[4]) / D - 0.5))
     return xy
 
 
@@ -400,7 +401,7 @@ def compute_data_distribution(labels, dataset, categorical):
     num_classes = 0
     for idx, (key, values) in enumerate(categorical.items()):
         count = len(values)
-        indices = torch.argmax(data_labels[:, num_classes:(num_classes+count)], dim=-1)
+        indices = torch.argmax(data_labels[:, num_classes:(num_classes + count)], dim=-1)
         unique_values, unique_count = np.unique(indices, return_counts=True)
         percentage = unique_count / np.sum(unique_count)
         # class_weight = torch.from_numpy(1 - percentage).float()
@@ -417,7 +418,7 @@ def compute_data_distribution(labels, dataset, categorical):
         print('Dataset distribution for task {}: classes={}, percentage={}, count={}'.format(
             key,
             values[unique_values],
-            " ".join(map("{:.2f}%".format, 100*percentage)),
+            " ".join(map("{:.2f}%".format, 100 * percentage)),
             unique_count
         ))
     return weights
