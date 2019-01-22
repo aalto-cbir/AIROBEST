@@ -48,6 +48,10 @@ def parse_args():
     parser.add_argument('-gpu',
                         type=int, default=-1,
                         help="Gpu id to be used, default is -1 which means cpu")
+    parser.add_argument('-hyper_data_header',
+                        required=False, type=str,
+                        default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
+                        help='Path to hyperspectral data header')
     # Training options
     train = parser.add_argument_group('Training')
     train.add_argument('-epoch', type=int,
@@ -77,8 +81,7 @@ def parse_args():
     train.add_argument('-report_frequency', type=int,
                        default=20,
                        help="Report training result every 'report_frequency' steps")
-    train.add_argument('-use_visdom', type=bool,
-                       default=True,
+    train.add_argument('-use_visdom', default=False, action='store_true',
                        help="Enable visdom to visualize training process")
     train.add_argument('-visdom_server', type=str,
                        default='http://localhost',
@@ -86,8 +89,7 @@ def parse_args():
     train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights'],
                        default='grad_norm',
                        help="Specify loss balancing method for multi-task learning")
-    train.add_argument('-class_balancing', type=bool,
-                       default=True,
+    train.add_argument('-class_balancing', default=False, action='store_true',
                        help="Specify if class balancing should be used")
 
     opt = parser.parse_args()
@@ -248,7 +250,7 @@ def main():
                 batch_size=options.batch_size,
                 device=device.type)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
     print(modelTrain)
     print('Classification loss function:', loss_cls_list)
     print('Regression loss function:', loss_reg)

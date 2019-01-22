@@ -7,6 +7,8 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import string
+import scipy.stats as stats
+import seaborn as sns; sns.set(style="white", color_codes=True)
 
 
 def format_filename(s):
@@ -24,7 +26,45 @@ def format_filename(s):
     return filename
 
 
+def envi2world(pointmatrix_local, GT):
+    """
+    convert the image coordinates (relative to pixel center) in pointmatrix_local to the
+    (usually projected) world coordinates of envihdrfilename.
+    pointmatrix_local: 2-column np.matrix [[x, y]]
+    """
+
+    # transform to hyperspectral figure coordinates
+    P = pointmatrix_local[:,0] + 0.5 # relative to pixel corner
+    L = pointmatrix_local[:,1] + 0.5
+    xy = np.column_stack(  ( GT[0] + P*GT[1] + L*GT[2],
+                    GT[3] + P*GT[4] + L*GT[5] ) )
+
+    return xy
+
+
+def world2envi(pointmatrix, GT ):
+    """
+    convert the (usually projected) world coordiates in pointmatrix to the image
+    coordinates of envihdrfilename (relative to pixel center).
+    pointmatrix: 2-column np.matrix [[x, y]]
+    """
+
+    # transform to hyperspectral figure coordinates
+    X = pointmatrix[:,0]
+    Y = pointmatrix[:,1]
+    D = GT[1]*GT[5] - GT[2]*GT[4]
+    xy = np.column_stack( ( ( X*GT[5] - GT[0]*GT[5] + GT[2]*GT[3] - Y*GT[2] ) / D - 0.5 ,
+         ( Y*GT[1] - GT[1]*GT[3] + GT[0]*GT[4] - X*GT[4] ) / D - 0.5 ) )
+    return xy
+
+
 def envi2world_p(xy, GT):
+    """
+    convert one point from envi to world coordinate
+    :param xy:
+    :param GT:
+    :return:
+    """
     P = xy[0] + 0.5  # relative to pixel corner
     L = xy[1] + 0.5
     xy = (GT[0] + P * GT[1] + L * GT[2],
@@ -180,7 +220,51 @@ def visualize_label(target_labels, label_names, save_path):
     print('-------Done visualizing labels--------')
 
 
+def pred_target_plot(x, y, color, name, save_path, epoch):
+    """
+    Scatter plot of prediction and target values together with histogram distribution
+    of the two axes x and y
+    :param x: target values
+    :param y: corresponding predicted values
+    :param color: color to plot
+    :param name: task name
+    :param save_path: saving path
+    :param epoch:
+    :return:
+    """
+    # fig, ax = plt.subplots()
+    # ax.scatter(x, y, s=2, c=color)
+    # ax.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.7, label='Ideal prediction')
+    # plt.ylim(top=1.3, bottom=-0.2)
+    # ax.set_xlabel('Target')
+    # ax.set_ylabel('Prediction')
+    # ax.set_title('Task {}'.format(name))
+    # ax.legend()
+    # fig.savefig('{}/task_{}_e{}'.format(save_path, name, epoch))
+    # plt.close(fig)
+
+    g = sns.JointGrid(x, y, height=10, xlim=(-0.1, 1.1), ylim=(-0.1, 1.1))
+    # g = sns.jointplot(x, y, kind='reg')
+    g = g.plot_joint(plt.scatter, color=color, s=30, edgecolor="white")
+    g = g.plot_marginals(sns.distplot, kde=True, color=color)
+    g = g.annotate(stats.pearsonr)
+    g.set_axis_labels(xlabel='Target', ylabel='Prediction')
+
+    g.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
+    g.savefig('{}/task_{}_e{}.png'.format(save_path, name, epoch))
+
+
 def plot_largest_error_patches(task_label, topk_points, patch_size, task_name, path, epoch):
+    """
+    Plot top x% error patches on the map
+    :param task_label: a randomly chosen task label (used for visualizing purpose, better used the rgb map)
+    :param topk_points: list of points with highest errors
+    :param patch_size: patch size
+    :param task_name: name of the task
+    :param path: saving path
+    :param epoch:
+    :return:
+    """
     x = topk_points[:, 1] - patch_size // 2
     y = topk_points[:, 0] - patch_size // 2
     fig, ax = plt.subplots(figsize=(25, 25))
@@ -198,6 +282,42 @@ def plot_largest_error_patches(task_label, topk_points, patch_size, task_name, p
     fig.savefig(save_name)
     plt.close(fig)
     # resize_img(save_name, 2500)
+
+
+def plot_error_histogram(errors, bins, task_name, epoch, path):
+    """
+    Plot error histogram of the validation errors
+    :param errors: list of errors, each corresponding to one prediction
+    :param bins: number of bins to plot
+    :param task_name: name of the current task being plotted
+    :param epoch:
+    :param path: saving path
+    :return:
+    """
+    fig, ax1 = plt.subplots()
+    ax1.set_ylim(bottom=0)
+    ax1.set_xlabel('Error')
+    ax1.set_ylabel('Frequency')
+    if task_name == 'all_tasks':
+        hist_range = None
+    else:
+        hist_range = (0, 0.25)
+    counts, bins, _ = ax1.hist(errors, bins, density=False, range=hist_range,
+                               facecolor='g', edgecolor='black', alpha=0.8)
+
+    freq_cumsum = np.cumsum(counts)
+    ax2 = ax1.twinx()
+    ax2.set_ylim(bottom=0)
+    ax2.set_ylabel('Cumulative sum of frequency')
+    ax2.plot(bins[1:], freq_cumsum, c='b')
+
+    # err_cumsum = []
+    # for b in bins:
+    #     err_cumsum.append(torch.sum(errors[errors < b]))
+    # ax2.plot(bins, err_cumsum, c='r')
+    save_path = '{}/err_hist_{}_e{}'.format(path, task_name, epoch)
+    fig.savefig(save_path)
+    plt.close(fig)
 
 
 def save_as_rgb(hyper_image, wavelength, path):
@@ -233,6 +353,36 @@ def save_as_rgb(hyper_image, wavelength, path):
     img.save('%s/rgb_image.png' % path)
 
 
+def export_error_points(coords, rmsq_errors, geotrans, sum_errors, names, epoch, save_path):
+    """
+    Export points with corresponding errors to text file
+    :param coords: point coordinates in image system (row and column)
+    :param rmsq_errors: list root mean squared errors for each point
+    :param geotrans: geo-transform mapping
+    :param sum_errors: sum of errors for all tasks
+    :param names: list of task names
+    :param epoch:
+    :param save_path:
+    :return:
+    """
+    points_worldcoord = envi2world(coords, geotrans)
+    file_data = []
+    header = []
+    ids = np.array(range(len(coords))).reshape(-1, 1)
+    file_data.append(ids)
+    file_data.append(points_worldcoord)
+    file_data.append(rmsq_errors)
+    file_data.append(sum_errors.unsqueeze(-1))
+    file_data = np.concatenate(file_data, axis=1)
+    header = np.append(header, ['#ID', 'X', 'Y'])
+    header = np.append(header, names)
+    header = np.append(header, 'sum_errors')
+    header = '\t'.join(header)
+    fname = '{}/error_world_coords_e{}.txt'.format(save_path, epoch)
+    fmt = '\t'.join(['%i', '%i', '%i'] + ['%1.4f'] * (rmsq_errors.shape[-1] + 1))
+    np.savetxt(fname, file_data, fmt=fmt, delimiter='\t', header=header)
+
+
 def compute_data_distribution(labels, dataset, categorical):
     """
     Compute data distribution in training and validation sets
@@ -253,14 +403,13 @@ def compute_data_distribution(labels, dataset, categorical):
         indices = torch.argmax(data_labels[:, num_classes:(num_classes+count)], dim=-1)
         unique_values, unique_count = np.unique(indices, return_counts=True)
         percentage = unique_count / np.sum(unique_count)
-        class_weight = torch.from_numpy(1 - percentage).float()
+        # class_weight = torch.from_numpy(1 - percentage).float()
         # class_weight = torch.from_numpy(np.max(percentage) / percentage).float()
-        weights.append(class_weight)
 
         # inverse median frequency
-        # median = np.median(percentage)
-        # task_weight = median / percentage
-        # weights.append(torch.from_numpy(task_weight).float())
+        median = np.median(percentage)
+        class_weight = torch.from_numpy(median / percentage).float()
+        weights.append(class_weight)
 
         num_classes += count
 

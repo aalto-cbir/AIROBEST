@@ -34,7 +34,8 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -report_frequency 20 \
                     -loss_balancing grad_norm \
                     -visdom_server http://taito-gpu.csc.fi \
-                    -class_balancing False \
+                    -use_visdom \
+                    -class_balancing \
                     -gpu 0
 
 echo -e "\n ... printing job stats .... \n"

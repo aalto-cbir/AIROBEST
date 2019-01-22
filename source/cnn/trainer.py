@@ -1,4 +1,5 @@
 import os
+import sys
 
 import torch
 import numpy as np
@@ -6,7 +7,11 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
-from input.utils import plot_largest_error_patches
+from input.utils import plot_largest_error_patches, plot_error_histogram, envi2world, pred_target_plot, \
+    export_error_points
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+from tools.hypdatatools_img import get_geotrans
 
 
 class Trainer(object):
@@ -22,6 +27,7 @@ class Trainer(object):
         self.visualizer = visualizer
         self.checkpoint = checkpoint
         self.hyper_labels_reg = hyper_labels_reg
+        self.hypGt = get_geotrans(self.options.hyper_data_header)
 
         save_dir = self.options.save_dir or self.options.model
         self.ckpt_path = './checkpoint/{}'.format(save_dir)
@@ -42,7 +48,7 @@ class Trainer(object):
             start_epoch = 1
             train_step = 0
             start_step = 0
-        save_every = 1  # specify number of epochs to save model
+        save_every = 10  # specify number of epochs to save model
         sum_loss = 0.0
         avg_losses = []
         val_losses = []
@@ -237,7 +243,7 @@ class Trainer(object):
                 metric = val_loss
                 # metric = -val_avg_accuracy
 
-                if (e % 10 == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
+                if (e % 20 == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
                             'title': '{} at epoch {}'.format(label_names[i], e),
@@ -321,52 +327,43 @@ class Trainer(object):
             conf_matrices.append(conf_matrix)
 
         # scatter plot prediction vs target labels
-        if epoch % 10 == 1 or epoch == self.options.epoch:
+        if epoch % 20 == 1 or epoch == self.options.epoch:
             n_reg = self.modelTrain.model.n_reg
+            coords = np.array(val_loader.dataset.coords)
 
             cmap = plt.get_cmap('viridis')
             colors = [cmap(i) for i in np.linspace(0, 1, n_reg)]
             names = self.metadata['reg_label_names']
+
+            rmsq_errors = torch.abs(all_pred_reg - all_tgt_reg)
+
+            sum_errors = torch.sum(rmsq_errors, dim=1)
+            plot_error_histogram(sum_errors, 100, 'all_tasks', epoch, self.image_path)
+
+            k = N_samples // 10  # 10% of the largest error
+            value, indices = torch.topk(sum_errors, k, dim=0, largest=True, sorted=False)
+
+            topk_points = coords[indices]
+            task_label = self.hyper_labels_reg[:, :, 0]
+            # chose the first task label just for visualization
+            plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
+                                       'all_tasks', self.image_path, epoch)
+
+            export_error_points(coords, rmsq_errors, self.hypGt, sum_errors, names, epoch, self.ckpt_path)
+
             for i in range(n_reg):
                 x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
-                fig, ax = plt.subplots()
-                ax.scatter(x, y, s=2, c=colors[i])
-                ax.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.7, label='Ideal prediction')
-                plt.ylim(top=1.3, bottom=-0.2)
-                ax.set_xlabel('Target')
-                ax.set_ylabel('Prediction')
-                ax.set_title('Task {}'.format(names[i]))
-                # ax.legend()
-                fig.savefig('{}/task_{}_e{}'.format(self.image_path, names[i], epoch))
-                plt.close(fig)
+
+                pred_target_plot(x, y, colors[i], names[i], self.image_path, epoch)
 
                 # plot error histogram
-                mse_errors = (x - y) ** 2
-
-                n_bins = 100
-                fig, ax1 = plt.subplots()
-                ax1.set_xlabel('Error')
-                ax1.set_ylabel('Frequency')
-                counts, bins, _ = ax1.hist(mse_errors, n_bins, density=False, range=(0, 0.25),
-                                           facecolor='g', edgecolor='black', alpha=0.8)
-
-                freq_cumsum = np.cumsum(counts)
-                ax2 = ax1.twinx()
-                ax2.set_ylabel('Cumulative sum of frequency')
-                ax2.plot(bins[1:], freq_cumsum, c='b')
-
-                # err_cumsum = []
-                # for b in bins:
-                #     err_cumsum.append(torch.sum(mse_errors[mse_errors < b]))
-                # ax2.plot(bins, err_cumsum, c='r')
-                fig.savefig('{}/err_hist_{}_e{}'.format(self.image_path, names[i], epoch))
-                plt.close(fig)
+                mse_errors = torch.abs(x - y)
+                plot_error_histogram(mse_errors, 100, names[i], epoch, self.image_path)
 
                 # plot top k largest errors on the map
                 task_label = self.hyper_labels_reg[:, :, i]
-                k = N_samples // 10  # 10% of the largest error
                 value, indices = torch.topk(mse_errors, k, dim=0, largest=True, sorted=False)
-                coords = np.array(val_loader.dataset.coords)
+
                 topk_points = coords[indices]
                 plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
                                            names[i], self.image_path, epoch)
