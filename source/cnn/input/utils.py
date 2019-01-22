@@ -215,7 +215,7 @@ def visualize_label(target_labels, label_names, save_path):
         #####
 
         # plt.imsave(name, labels)
-        print('{}: Min={}, Max={}, Mean={}'.format(label_names[i], np.min(labels), np.max(labels), np.mean(labels)))
+        print('Mean = {}, Std = {}'.format(label_names[i], np.mean(labels), np.std(labels)))
         resize_img(name, 2000)
 
     print('-------Done visualizing labels--------')
@@ -381,7 +381,7 @@ def export_error_points(coords, rmsq_errors, geotrans, sum_errors, names, epoch,
     header = '\t'.join(header)
     fname = '{}/error_world_coords_e{}.txt'.format(save_path, epoch)
     fmt = '\t'.join(['%i', '%i', '%i'] + ['%1.4f'] * (rmsq_errors.shape[-1] + 1))
-    np.savetxt(fname, file_data, fmt=fmt, delimiter='\t', header=header)
+    np.savetxt(fname, file_data, fmt=fmt, delimiter='\t', header=header, comments='')
 
 
 def compute_data_distribution(labels, dataset, categorical):

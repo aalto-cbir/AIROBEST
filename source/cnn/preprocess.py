@@ -296,10 +296,12 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
 
     # normalize data for regression task
     normalized_labels = []
+    reg_stats = {}
     for b in range(labels.shape[2]):
         band = labels[:, :, b]
+        true_max = np.max(band)
         if options.label_normalize_method == 'minmax_scaling':
-            max_val = np.max(band)
+            max_val = true_max
             min_val = np.min(band)
         elif options.label_normalize_method == 'clip':
             value_matrix = band[band > 0] if options.ignore_zero_labels else band
@@ -320,7 +322,9 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
             # band[band < min_val] = min_val  # this changes 0 values labels
             # band[zero_mask] = 0  # put back 0 values has been changed by min_val
 
-        print('Regression {}: lower bound = {}, upper bound = {}'.format(reg_label_names[b], min_val, max_val))
+        print('Regression {}: lower bound = {}, upper bound = {}, true_max = {}'
+              .format(reg_label_names[b], min_val, max_val, true_max))
+        reg_stats[b] = {'min': min_val, 'max': max_val, 'true_max': true_max}
         if max_val != min_val:
             band = (band - min_val) / (max_val - min_val)
         elif max_val != 0:  # if all items have the same non-zero value
@@ -336,6 +340,7 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
 
     metadata['categorical'] = categorical
     metadata['num_classes'] = num_classes
+    metadata['regression'] = reg_stats
 
     return normalized_labels, metadata
 
@@ -363,6 +368,23 @@ def main():
     forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
 
     hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
+
+    # -----add labels for 3 more tasks-----
+    mainspecies = ['percentage_spruce', 'percentage_pine', 'percentage_broadleaf']
+    additional_tasks = ['dbh_spruce', 'dbh_pine', 'dbh_birch']
+    ids = []
+    dbh_idx = np.where(band_names == 'dbh100_cm')[0]
+    assert dbh_idx >= 0, 'Cannot find index of dbh'
+    dbh_labels = hyper_labels[:, :, dbh_idx]
+    for species in mainspecies:
+        ids.append(np.where(band_names == species)[0])
+    for i, task in enumerate(additional_tasks):
+        band_names = np.append(band_names, task)
+        assert ids[i] >= 0, 'Cannot find index of %s' % species
+        task_labels = hyper_labels[:, :, ids[i]]
+        new_task = dbh_labels * task_labels
+        hyper_labels = np.concatenate((hyper_labels, new_task), axis=-1)
+    # ----------
 
     # Current categorical classes: fertilityclass (0), soiltype (1), developmentclass (2), maintreespecies (9)
     cls_label_names = band_names[options.categorical_bands]
