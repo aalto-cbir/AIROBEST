@@ -68,26 +68,42 @@ def parse_args():
     parser.add_argument('-ignored_bands', nargs='+',
                         required=False, default=[3, 8],
                         help='List of band indices in the target labels to ignore')
-    parser.add_argument('-ignore_zero_labels', type=bool,
-                        default=True,
+    parser.add_argument('-ignore_zero_labels',
+                        default=False, action='store_true',
                         help='Whether to ignore target labels with 0 values in data statistics')
+    parser.add_argument('-remove_bad_data', default=False, action='store_true',
+                        help='Remove bad data from forest labels')
     opt = parser.parse_args()
     opt.categorical_bands = list(map(int, opt.categorical_bands))
     opt.ignored_bands = list(map(int, opt.ignored_bands))
     return opt
 
 
-def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt):
+def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt, should_remove_bad_data):
     """
     Create hyperspectral labels from forest data
     :param hyper_image: W1xH1xC
     :param forest_labels: W2xH2xB
+    :param hyper_gt
+    :param forest_gt
+    :param should_remove_bad_data
     :return:
     """
     rows, cols, _ = hyper_image.shape
 
     c, r = hyp2for((0, 0), hyper_gt, forest_gt)
     hyper_labels = np.array(forest_labels[r:(r+rows), c:(c+cols)])
+
+    if should_remove_bad_data:
+        stand_id_data = spectral.open_image('/proj/deepsat/hyperspectral/standids_in_pixels.hdr')
+        stand_ids_full = stand_id_data.open_memmap()
+        stand_ids_mapped = np.array(stand_ids_full[r:(r + rows), c:(c + cols)], dtype='int')  # shape RxCx1
+        stand_ids_mapped = np.squeeze(stand_ids_mapped) # remove the single-dimensional entries, size RxC
+        import pandas as pd
+        bad_stand_df = pd.read_csv('/proj/deepsat/hyperspectral/bad_stands.csv')
+        bad_stand_list = bad_stand_df['standid'].tolist()
+        for stand_id in bad_stand_list:
+            hyper_labels[stand_ids_mapped == stand_id] = 0
 
     return hyper_labels
 
@@ -306,7 +322,7 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
         elif options.label_normalize_method == 'clip':
             value_matrix = band[band > 0] if options.ignore_zero_labels else band
             # use 2 and 98 percentile as thresholding values
-            # TODO: clip values can be passes as arguments
+            # TODO: clip values can be passed as arguments
             # NOTE: if we want to clip the matrix to a lower bound,
             # more sophisticated handling needs to take place as the original
             # zero data labels (road, lakes) will become negative => handle properly in
@@ -367,7 +383,7 @@ def main():
     # forest_labels = torch.from_numpy(forest_data.open_memmap())  # shape: 11996x12517x17
     forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
 
-    hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt)
+    hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt, options.remove_bad_data)
 
     # -----add labels for 3 more tasks-----
     mainspecies = ['percentage_spruce', 'percentage_pine', 'percentage_broadleaf']
