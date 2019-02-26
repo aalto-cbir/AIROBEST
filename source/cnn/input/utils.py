@@ -296,21 +296,16 @@ def plot_error_histogram(errors, bins, task_name, epoch, path):
     :return:
     """
     fig, ax1 = plt.subplots()
-    ax1.set_ylim(bottom=0)
     ax1.set_xlabel('Error')
     ax1.set_ylabel('Frequency')
-    if task_name == 'all_tasks':
-        hist_range = None
-    else:
-        hist_range = (0, 0.25)
-    counts, bins, _ = ax1.hist(errors, bins, density=False, range=hist_range,
-                               facecolor='g', edgecolor='black', alpha=0.8)
+
+    counts, bins, _ = ax1.hist(errors, bins, density=False, facecolor='g', edgecolor='black', alpha=0.8)
 
     freq_cumsum = np.cumsum(counts)
     ax2 = ax1.twinx()
-    ax2.set_ylim(bottom=0)
     ax2.set_ylabel('Cumulative sum of frequency')
     ax2.plot(bins[1:], freq_cumsum, c='b')
+    ax2.set_ylim(bottom=0, top=None)  # set this after plotting the data
 
     # err_cumsum = []
     # for b in bins:

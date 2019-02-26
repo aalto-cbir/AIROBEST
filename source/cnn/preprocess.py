@@ -13,7 +13,7 @@ import spectral
 import torch
 import matplotlib.pyplot as plt
 
-from input.utils import hyp2for, world2envi_p, save_as_rgb, visualize_label, split_data, format_filename
+from input.utils import hyp2for, world2envi_p, save_as_rgb, visualize_label, format_filename
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
