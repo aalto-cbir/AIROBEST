@@ -221,7 +221,7 @@ def visualize_label(target_labels, label_names, save_path):
     print('-------Done visualizing labels--------')
 
 
-def pred_target_plot(x, y, color, name, save_path, epoch):
+def plot_pred_vs_target(x, y, color, name, save_path, epoch):
     """
     Scatter plot of prediction and target values together with histogram distribution
     of the two axes x and y
@@ -253,6 +253,18 @@ def pred_target_plot(x, y, color, name, save_path, epoch):
 
     g.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
     g.savefig('{}/task_{}_e{}.png'.format(save_path, name, epoch))
+    
+    # hexbin plot
+    g2 = sns.jointplot(x, y, height=10, xlim=(-0.1, 1.1), ylim=(-0.1, 1.1), kind='hex', color=color)
+    g2.set_axis_labels(xlabel='Target', ylabel='Prediction')
+    g2.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
+    g2.savefig('{}/task_{}_hexbin_e{}.png'.format(save_path, name, epoch))
+
+    # kernel density estimation (kde) plot
+    g3 = sns.jointplot(x, y, height=10, xlim=(-0.1, 1.1), ylim=(-0.1, 1.1), kind='kde', color=color)
+    g3.set_axis_labels(xlabel='Target', ylabel='Prediction')
+    g3.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
+    g3.savefig('{}/task_{}_kde_e{}.png'.format(save_path, name, epoch))
 
 
 def plot_largest_error_patches(task_label, topk_points, patch_size, task_name, path, epoch):

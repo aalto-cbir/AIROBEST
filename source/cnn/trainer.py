@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
-from input.utils import plot_largest_error_patches, plot_error_histogram, envi2world, pred_target_plot, \
+from input.utils import plot_largest_error_patches, plot_error_histogram, envi2world, plot_pred_vs_target, \
     export_error_points
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
@@ -243,7 +243,7 @@ class Trainer(object):
                 metric = val_loss
                 # metric = -val_avg_accuracy
 
-                if (e % 20 == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
+                if (e % 20 == 0 or e == 1) and self.options.disabled != 'classification':
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
                             'title': '{} at epoch {}'.format(label_names[i], e),
@@ -327,7 +327,7 @@ class Trainer(object):
             conf_matrices.append(conf_matrix)
 
         # scatter plot prediction vs target labels
-        if epoch % 20 == 1 or epoch == self.options.epoch:
+        if epoch % 20 == 0 or epoch == 1:
             n_reg = self.modelTrain.model.n_reg
             coords = np.array(val_loader.dataset.coords)
 
@@ -354,7 +354,7 @@ class Trainer(object):
             for i in range(n_reg):
                 x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
 
-                pred_target_plot(x, y, colors[i], names[i], self.image_path, epoch)
+                plot_pred_vs_target(x, y, colors[i], names[i], self.image_path, epoch)
 
                 # plot error histogram
                 mse_errors = torch.abs(x - y)
