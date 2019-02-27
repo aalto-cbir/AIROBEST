@@ -155,6 +155,7 @@ for filename_mv in filenames_mv:
     percentage_spruce = []
     percentage_broadleaf = []
     for areai,qi, q1i in zip( basalarea, q_basal, q_species ):
+        # WWW NOTE: areai is not used
         if len(qi) > 0:
             basalareas = [ i[0] for i in qi ]
             if sum( basalareas ) > 0:

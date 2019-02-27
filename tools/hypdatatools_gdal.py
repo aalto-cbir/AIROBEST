@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import matplotlib.path 
 import gdal
 from osgeo import ogr,osr
+
 from tools.hypdatatools_img import *
 
 # Mapping of Python types to OGR field types. Using other data types with this library will just fail
@@ -356,8 +357,7 @@ def pixel_coords( hypfilename, point, areasize, areaunit, areashape, hypdata=Non
     return coordlist
 
 def points_from_shape( rasterfile_in, geometry, rasterfile_hdr=None, localprintcommand=None ):
-    """ 
-    subset a raster file with a vector using matplotlib.path
+    """ subset a raster file with a vector using matplotlib.path
     outputs the coordlist [ [x0], [x1] ] ] of the coordinates in points inside the raster file in global coordinates
         the coordlist can be directly used to subset a raster
     inputs
@@ -637,12 +637,13 @@ def vector_getfeatures( filename_in, fieldnames_in=None, layernumber=0, localpri
         geomlist = []
         # create a list of empty lists to store output values
         valuelist = []
-        for fn in fieldnames_in:
-            valuelist.append( [] )
-        # convert field names to numbers
-        ldefn = sh_layer.GetLayerDefn()
-        fieldnames = [ ldefn.GetFieldDefn(n).name for n in range(ldefn.GetFieldCount()) ]
-        fieldnumbers = [ fieldnames.index(x) if x in fieldnames else -1 for x in fieldnames_in ]
+        if fieldnames_in is not None:
+            for fn in fieldnames_in:
+                valuelist.append( [] )
+            # convert field names to numbers
+            ldefn = sh_layer.GetLayerDefn()
+            fieldnames = [ ldefn.GetFieldDefn(n).name for n in range(ldefn.GetFieldCount()) ]
+            fieldnumbers = [ fieldnames.index(x) if x in fieldnames else -1 for x in fieldnames_in ]
             
         for feature in sh_layer:
             # Lauri saved geometries as strings-- likely he found it to be sufficiently robust, instead of copying the geometries
@@ -652,13 +653,15 @@ def vector_getfeatures( filename_in, fieldnames_in=None, layernumber=0, localpri
             # shapes[str(feature.GetField("standid"))] = str(feature.GetGeometryRef()) 
             geomlist.append( feature.GetGeometryRef().Clone() ) 
             FIDlist.append( feature.GetFID() )
-            for vl,fn in zip(valuelist,fieldnumbers):
-                vl.append( feature.GetField( fn ) if fn>-1 else None )
+            if fieldnames_in is not None:
+                for vl,fn in zip(valuelist,fieldnumbers):
+                    vl.append( feature.GetField( fn ) if fn>-1 else None )
         #print(len(FIDlist))
         outlist = [ FIDlist, geomlist ]
         # add the values for requested fields
-        for valuesublist in valuelist:
-            outlist.append( valuesublist )
+        if fieldnames_in is not None:
+            for valuesublist in valuelist:
+                outlist.append( valuesublist )
     else:
         outlist = []
     sh_file.Release()
@@ -903,7 +906,7 @@ def vector_rasterize_like( shpfile, rasterfile, shpfield=None, layernumber=0, dt
         rasterfile: the sample raster used to get geometry from
         shpfield: (str) name of the field in shapefile to get the raster levels from. If none, a constant value of one is used to create a mask
         layernumber: which layer is shpfile to use
-        dtype: pyhton data type to for raster. If None, determined based on the values in shpfield
+        dtype: python data type to for raster. If None, determined based on the values in shpfield
             dtype is converted to gdal type using GDAL_FIELD_TYPES_MAP defined at the beginning of this file
         RasterizeOptions: a list that will be passed to GDAL RasterizeLayers -- papszOptions, like ["ALL_TOUCHED=TRUE"]
             shpfield is added to the beginning of the options sent to RasterizeLayers 
@@ -972,17 +975,21 @@ def vector_rasterize_like( shpfile, rasterfile, shpfield=None, layernumber=0, dt
         return None
 
 def vector_rasterize( shpfile, rasterfile, shpfield=None, layernumber=0, band=1, RasterizeOptions=[], localprintcommand=None ):
-    """
-    Rasterize a shapefile into an existing raster shapefile, rasterizes it in memory so it has the exact same extent as the rasterfile.
-    NOTE: seems to give error "ERROR 3: Failed to write scanline 0 to file" when doing raster.FlushCache() on an ENVI file
+    """ Rasterize a shapefile into an existing raster shapefile, rasterizes it in
+        memory so it has the exact same extent as the rasterfile.
+    NOTE: seems to give error "ERROR 3: Failed to write scanline 0 to file" when
+        doing raster.FlushCache() on an ENVI file
     in:
         shpfile: file to rasterize
         rasterfile: the existing file which will be written into
-        shpfield: (str) name of the field in shapefile to get the raster levels from. If none, a constant value of one is used to create a mask
+        shpfield: (str) name of the field in shapefile to get the raster levels from. 
+            If none, a constant value of one is used to create a mask
         layernumber: which layer is shpfile to use
-        band: band number in rasterfile to modify -- this band will include the rastrized vector
-        RasterizeOptions: a list that will be passed to GDAL RasterizeLayers -- papszOptions, like ["ALL_TOUCHED=TRUE"]
-            shpfield is added to the beginning of the options sent to RasterizeLayers 
+        band: band number in rasterfile to modify -- this band will include the 
+            rastrized vector
+        RasterizeOptions: a list that will be passed to GDAL RasterizeLayers 
+            -- papszOptions, like ["ALL_TOUCHED=TRUE"] shpfield is added to 
+            the beginning of the options sent to RasterizeLayers 
     out:
         True or False (success or failure)
     """
@@ -1031,7 +1038,9 @@ def vector_rasterize( shpfile, rasterfile, shpfield=None, layernumber=0, band=1,
             .format( layernumber, shape_name ) )
         return False
     
-    
+
+
+
 def geopackage_getdatatables( datasource, localprintcommand=None ):
     """
     get the data tables from a geopackage file.
@@ -1554,3 +1563,4 @@ def envi_addheaderfield( envifilename, fieldname, values, checkifexists=True, lo
             hfile.write( outstr )
         localprintcommand( functionname +" Added field <{}> to {}.\n"
             .format( fieldname, hdrfile ) )
+            

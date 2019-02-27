@@ -17,9 +17,9 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.path
 import matplotlib
+import numpy as np
 
 from tools.hypdatatools_utils import *
-
 
 def get_wavelength( hypfilename, hypdata=None ):
     """
@@ -48,7 +48,62 @@ def get_wavelength( hypfilename, hypdata=None ):
         bands = int( hyp_metadata['bands'] )
         wl_hyp = -1* np.arange( bands )-1 # start at -1
     return wl_hyp, wl_found
+    
+def get_DIV( hypfilename, hypdata=None ):
+    """ read the Data Ignore Value from ENVI header
+    return None if not found
+    """
+    if hypdata is None:
+        hypdata = spectral.open_image( hypfilename )
 
+    if type(hypdata) is dict:
+        hyp_metadata = hypdata
+    else:
+        hyp_metadata = hypdata.metadata
+        
+    DIV_found = 'data ignore value' in hyp_metadata
+    if DIV_found:
+        DIV = hyp_metadata['data ignore value']
+        # metadata contains strings. We need a number (float or int)
+        if envi_isfloat( hypfilename, hyp_metadata ):
+            DIV = float(DIV)
+        else:
+            DIV = int(DIV)
+        return DIV
+    else:
+        return None
+        
+def envi_isfloat( hypfilename, hypdata=None ):
+    """ return if the file type contains floating-point.
+    If False, it's integer or byte. If type not given, return None. From documentation:
+        'data type' The type of data representation, where 1=8-bit byte; 2=16-bit
+        signed integer; 3=32-bit signed long integer; 4=32-bit floating
+        point; 5=64-bit double-precision floating point; 6=2x32-bit
+        complex, real-imaginary pair of double precision; 9=2x64-bit
+        double-precision complex, real-imaginary pair of double precision;
+        12=16-bit unsigned integer; 13=32-bit unsigned long integer;
+        14=64-bit signed long integer; and 15=64-bit unsigned long
+        integer.
+    """
+    if hypdata is None:
+        hypdata = spectral.open_image( hypfilename )
+
+    if type(hypdata) is dict:
+        hyp_metadata = hypdata
+    else:
+        hyp_metadata = hypdata.metadata
+        
+    type_found = 'data type' in hyp_metadata
+    if type_found:
+        dt = int(hyp_metadata['data type'])
+        if dt>3 and dt<12:
+            return True
+        else:
+            return False
+    else:
+        # data type not given. Output undetermined
+        return None
+        
 def plot_hyperspectral( hypfilename, hypdata=None, hypdata_map=None, outputcommand=None, plotmode='default', plotbands=None ):
     """
     Create a figure with hyperspectral image and return handle
@@ -389,7 +444,7 @@ def create_raster_like( envifile, outfilename, Nlayers = 1, outtype=4, interleav
     """
     Create a new envi raster of the same size and geometry as the input file (envifile)
     in:
-        envifile = the ENVI (Spectral pyhton) raster to subset
+        envifile = the ENVI (Spectral pyhton) raster to use as the example
         outfilename = the filename to create
         Nlayers: number of layers in the output file
         outtype = output file data type according to ENVI
@@ -463,12 +518,18 @@ def create_raster_like( envifile, outfilename, Nlayers = 1, outtype=4, interleav
     outdata_map = outdata.open_memmap( writable=True )
     
     if fill_black:
-        localprintcommand(" and filling with DIV... ") 
+        localprintcommand(", filling with DIV ") 
+        DIV = get_DIV( envifile )
+        if DIV is None:
+            localprintcommand(" (no DIV in example, setting to 0) ... ") 
+            DIV = 0
+        else:
+            localprintcommand("... ")
         outdata_map[:,:,:] = DIV
     else:
         localprintcommand("... ") 
 
-    localprintcommand(" done .\n") # actually, the file will be closed after function exits
+    localprintcommand(" done .\n") # the file will be closed as the function exits
     return outdata
    
 def subset_raster( hypdata, outfilename, subset, hypdata_map=None, interleave=None, localprintcommand=None ):
@@ -668,8 +729,8 @@ def figure2image( fig_hypdata, hypdata, hypdata_map, outfilename, interleave="bi
     ymin = int( ylim[1]+0.5 )
     ymax = int( ylim[0]+1.5 )
 
-    imaxx = hypdata_map.shape[1] 
-    imaxy = hypdata_map.shape[0]
+    # imaxx = hypdata_map.shape[1] 
+    # imaxy = hypdata_map.shape[0]
     
     if xmin >= xmax or ymin >= ymax:
         localprintcommand("figure2image(): No pixels in the zoomed area. Aborting.\n")
