@@ -17,9 +17,9 @@ module purge
 module load python-env/intelpython3.6-2018.3 gcc/5.4.0
 module list
 
-#SAVE_DIR=subsetA
+#SAVE_DIR=subsetA4
 #HYP_IMAGE=subset_A_20170615_reflectance.hdr
-SAVE_DIR=mosaic
+SAVE_DIR=mosaic6
 HYP_IMAGE=20170615_reflectance_mosaic_128b.hdr
 
 srun python -u preprocess.py    -save_dir ${SAVE_DIR} \
@@ -31,7 +31,8 @@ srun python -u preprocess.py    -save_dir ${SAVE_DIR} \
                                 -normalize_method l2norm_along_channel \
                                 -hyper_data_path /proj/deepsat/hyperspectral/${HYP_IMAGE} \
                                 -forest_data_path /proj/deepsat/hyperspectral/forestdata.hdr \
-                                -ignore_zero_labels True \
+                                -ignore_zero_labels \
+                                -remove_bad_data \
                                 -label_normalize_method clip
 
 echo -e "\n ... printing job stats .... \n"

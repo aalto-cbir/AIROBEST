@@ -145,7 +145,9 @@ def split_data(rows, cols, mask, patch_size, stride=1, mode='grid'):
     train = []
     val = []
     coords = []
-    random_state = 101
+    # random_state = 101
+    random_state = np.random.randint(100, 1000)
+    print('Random seed:', random_state)
     if mode == 'grid':
         stride = patch_size  # overwrite striding value so that the patches are not overlapping
     # reserve 20% in the middle part of the hyperspectral image for validation
@@ -215,7 +217,8 @@ def visualize_label(target_labels, label_names, save_path):
         #####
 
         # plt.imsave(name, labels)
-        print('Mean = {}, Std = {}'.format(label_names[i], np.mean(labels), np.std(labels)))
+        nonzero_label = labels[labels > 0]
+        print('{} :Mean = {}, Std = {}'.format(label_names[i], np.mean(nonzero_label), np.std(nonzero_label)))
         resize_img(name, 2000)
 
     print('-------Done visualizing labels--------')
@@ -253,9 +256,9 @@ def plot_pred_vs_target(x, y, color, name, save_path, epoch):
 
     g.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
     g.savefig('{}/task_{}_e{}.png'.format(save_path, name, epoch))
-    
+
     # hexbin plot
-    g2 = sns.jointplot(x, y, height=10, xlim=(-0.1, 1.1), ylim=(-0.1, 1.1), kind='hex', color=color)
+    g2 = sns.jointplot(x, y, height=10, xlim=(-0.1, 1.1), ylim=(-0.1, 1.1), kind='hex', color=color, gridsize=50)
     g2.set_axis_labels(xlabel='Target', ylabel='Prediction')
     g2.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
     g2.savefig('{}/task_{}_hexbin_e{}.png'.format(save_path, name, epoch))
@@ -265,6 +268,7 @@ def plot_pred_vs_target(x, y, color, name, save_path, epoch):
     g3.set_axis_labels(xlabel='Target', ylabel='Prediction')
     g3.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
     g3.savefig('{}/task_{}_kde_e{}.png'.format(save_path, name, epoch))
+    plt.close('all')
 
 
 def plot_largest_error_patches(task_label, topk_points, patch_size, task_name, path, epoch):
@@ -307,11 +311,24 @@ def plot_error_histogram(errors, bins, task_name, epoch, path):
     :param path: saving path
     :return:
     """
+    # test distribution:
+    # distributions = ['norm', 'expon', 'gumbel', 'logistic']
+    # for dist in distributions:
+    #     result = stats.anderson(errors.numpy(), dist=dist)
+    #     print('Result for testing %s distribution (%s): %s' % (dist, task_name, result))
+    #     # for i in range(len(result.critical_values)):
+    #     #     sl, cv = result.significance_level[i], result.critical_values[i]
+    #     #     if result.statistic < result.critical_values[i]:
+    #     #         print('Significant level %.3f: %.3f, data follows %s distribution' % (sl, cv, dist))
+    #     #     else:
+    #     #         print('Significant level %.3f: %.3f, data does not follow %s distribution' % (sl, cv, dist))
+    #     # print('---End test---')
+    # ######
     fig, ax1 = plt.subplots()
     ax1.set_xlabel('Error')
     ax1.set_ylabel('Frequency')
 
-    counts, bins, _ = ax1.hist(errors, bins, density=False, facecolor='g', edgecolor='black', alpha=0.8)
+    counts, bins, _ = ax1.hist(errors, bins, density=False, facecolor='g', edgecolor='w', alpha=0.8)
 
     freq_cumsum = np.cumsum(counts)
     ax2 = ax1.twinx()
@@ -324,6 +341,7 @@ def plot_error_histogram(errors, bins, task_name, epoch, path):
     #     err_cumsum.append(torch.sum(errors[errors < b]))
     # ax2.plot(bins, err_cumsum, c='r')
     save_path = '{}/err_hist_{}_e{}'.format(path, task_name, epoch)
+    plt.tight_layout()
     fig.savefig(save_path)
     plt.close(fig)
 
@@ -399,6 +417,7 @@ def compute_data_distribution(labels, dataset, categorical):
     :param categorical: dictionary contains class info (equivalent to  metadata['categorical'])
     :return:
     """
+    # TODO: make sure training and validation sets include all classes for each classification tasks
     data_labels = []  # labels of data points in the dataset
     for (r, c) in dataset:
         data_labels.append(labels[r, c, :])
@@ -417,6 +436,11 @@ def compute_data_distribution(labels, dataset, categorical):
         # inverse median frequency
         median = np.median(percentage)
         class_weight = torch.from_numpy(median / percentage).float()
+        # weights.append(class_weight)
+
+        # different method to calculate class weights
+        # class_weight = torch.from_numpy(np.log(0.7 * np.sum(unique_count) / unique_count)).float()
+        class_weight[class_weight < 1] = 1.0
         weights.append(class_weight)
 
         num_classes += count

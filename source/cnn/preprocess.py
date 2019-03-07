@@ -208,22 +208,25 @@ def plot_chart(ax, label_name, unique_values, percentage):
     ax.set_title(label_name)
 
 
-def handle_class_balancing(percentage, unique_values, threshold=5):
+def handle_class_balancing(percentage, unique_values, threshold=5, remove_minor_classes=True):
     minor_percentages = percentage[percentage < threshold]
     remaining_percentages = percentage[percentage >= threshold]
     minor_classes = unique_values[percentage < threshold]
     remaining_classes = unique_values[percentage >= threshold]
     # 2 approaches to handle class imbalance
-    #   1: combine minor classes into a NEW common class (if minor_sum >= threshold)
-    #   2: combine minor classes into smallest class above the threshold (otherwise)
+    #   1: remove all minor classes from data
+    #   2: combine minor classes into a NEW common class (if minor_sum >= threshold)
+    #   3: combine minor classes into smallest class above the threshold (otherwise)
     minor_sum = minor_percentages.sum()
 
-    if minor_sum >= threshold:
+    if remove_minor_classes:
+        combined_class_idx = -1
+        remaining_percentages = remaining_percentages / (100 - minor_sum)
+    elif minor_sum >= threshold:
         combined_class_idx = len(remaining_percentages)
         new_class = np.max(remaining_classes) + 1
         remaining_classes = np.append(remaining_classes, new_class)
         remaining_percentages = np.append(remaining_percentages, minor_sum)
-
     else:
         combined_class_idx = np.argmin(remaining_percentages)
         remaining_percentages[combined_class_idx] += minor_sum
@@ -296,7 +299,10 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
                 if band[row, col] == 0 and options.ignore_zero_labels:
                     continue
                 idx = index_dict[band[row, col]]  # get the index of the value  band[row, col] in one-hot vector
-                one_hot[row, col, idx] = 1
+                if idx > -1:
+                    one_hot[row, col, idx] = 1
+                else:
+                    labels[row, col] = 0  # remove pixels containing the minor class
 
         if transformed_data is None:
             transformed_data = one_hot

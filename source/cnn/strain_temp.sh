@@ -2,13 +2,13 @@
 
 #SBATCH -J train
 #SBATCH --mem-per-cpu 10000
-##SBATCH --gres=gpu:k80:1
-##SBATCH -p gputest
-##SBATCH -t 0:15:00
+#SBATCH --gres=gpu:k80:1
+#SBATCH -p gputest
+#SBATCH -t 0:15:00
 
-#SBATCH --gres=gpu:p100:1
-#SBATCH -p gpu
-#SBATCH -t 0:30:00
+##SBATCH --gres=gpu:p100:1
+##SBATCH -p gpu
+##SBATCH -t 0:30:00
 
 id -a
 
@@ -17,7 +17,7 @@ module load intelconda/python3.6-2018.3
 module list
 
 #env
-DATA_DIR=./data/subsetA
+DATA_DIR=./data/subsetA4
 
 python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -src_norm_multiplier ${DATA_DIR}/image_norm_l2norm_along_channel.pt \
@@ -27,10 +27,10 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -patch_stride 2 \
                     -lr 0.0001 \
                     -batch_size 64 \
-                    -epoch 100 \
+                    -epoch 50 \
                     -model PhamModel \
                     -input_normalize_method minmax_scaling \
-                    -save_dir Pham-160119-subA1 \
+                    -save_dir Pham-260219-subA4 \
                     -report_frequency 20 \
                     -loss_balancing grad_norm \
                     -visdom_server http://taito-gpu.csc.fi \

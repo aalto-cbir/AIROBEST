@@ -247,6 +247,7 @@ class PhamModel(nn.Module):
             layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
             x_reg = F.relu(layer1(x))
             pred_reg = torch.cat((pred_reg, layer2(x_reg)), 1)
+            # pred_reg = torch.cat((pred_reg, F.sigmoid(layer2(x_reg))), 1)  # performed worse
 
         return pred_cls, pred_reg
 

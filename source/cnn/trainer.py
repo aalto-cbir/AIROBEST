@@ -4,7 +4,7 @@ import sys
 import torch
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
 import matplotlib.pyplot as plt
 
 from input.utils import plot_largest_error_patches, plot_error_histogram, envi2world, plot_pred_vs_target, \
@@ -243,7 +243,7 @@ class Trainer(object):
                 metric = val_loss
                 # metric = -val_avg_accuracy
 
-                if (e % 20 == 0 or e == 1) and self.options.disabled != 'classification':
+                if (e % 20 == 0 or e == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
                             'title': '{} at epoch {}'.format(label_names[i], e),
@@ -319,15 +319,24 @@ class Trainer(object):
         val_accuracies = val_accuracies * 100 / N_samples
         avg_accuracy = torch.mean(val_accuracies)
         conf_matrices = []
+        print('--Metrics--')
         for i in range(tgt_cls_indices.shape[-1]):
             conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
             # convert to percentage along rows
             conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
             conf_matrix = 100 * np.around(conf_matrix, decimals=2)
             conf_matrices.append(conf_matrix)
+            print('---Task %s---' % i)
+            precision = precision_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+            recall = recall_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+            f1 = f1_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+            print('Precision:', precision)
+            print('Recall:', recall)
+            print('F1 score', f1)
 
+        print('-------------')
         # scatter plot prediction vs target labels
-        if epoch % 20 == 0 or epoch == 1:
+        if epoch % 20 == 0 or epoch == 1 or epoch == self.options.epoch:
             n_reg = self.modelTrain.model.n_reg
             coords = np.array(val_loader.dataset.coords)
 
