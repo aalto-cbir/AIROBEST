@@ -27,12 +27,12 @@ python -u train.py  -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
                     -epoch 100 \
                     -model PhamModel \
                     -input_normalize_method minmax_scaling \
-                    -save_dir Pham-060319-f2-cb \
+                    -save_dir CRL_Pham-110319-f1-cb \
                     -report_frequency 150 \
                     -loss_balancing equal_weights \
                     -visdom_server http://taito-gpu.csc.fi \
                     -use_visdom \
-                    -class_balancing \
+                    -class_balancing CRL \
                     -gpu 0
                     #-class_balancing \
 echo -e "\n ... printing job stats .... \n"

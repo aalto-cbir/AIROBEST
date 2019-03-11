@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import init
 import torch.nn.functional as F
+import numpy as np
 
 
 class ChenModel(nn.Module):
@@ -232,7 +233,11 @@ class PhamModel(nn.Module):
         x = x.view(-1, self.features_size)
         x = F.relu(self.fc_shared(x))
 
-        pred_cls = torch.tensor([]).cuda()
+        if torch.cuda.is_available():
+            pred_cls = torch.tensor([]).cuda()
+        else:
+            pred_cls = torch.tensor([])
+
         # for classification task
         for i in range(self.n_cls):
             layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
@@ -241,7 +246,11 @@ class PhamModel(nn.Module):
             pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
             # pred_cls = torch.cat((pred_cls, layer2(x_cls)), 1)
         # for regression task
-        pred_reg = torch.tensor([]).cuda()
+        if torch.cuda.is_available():
+            pred_reg = torch.tensor([]).cuda()
+        else:
+            pred_reg = torch.tensor([])
+
         for i in range(self.n_reg):
             layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
             layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
@@ -277,7 +286,11 @@ class ModelTrain(nn.Module):
                 # for cross entropy loss
                 target = torch.argmax(target, dim=1).long()
                 criterion_cls = self.criterion_cls_list[idx]
-                single_loss = criterion_cls(prediction, target)
+
+                if self.options.class_balancing == 'cost_sensitive':
+                    single_loss = criterion_cls(prediction, target)
+                elif self.options.class_balancing == 'CRL':
+                    single_loss = self.compute_objective_loss(src, target, prediction)
 
             task_loss.append(single_loss)
             start += n_classes
@@ -291,3 +304,119 @@ class ModelTrain(nn.Module):
 
     def get_last_shared_layer(self):
         return self.model.get_last_shared_layer()
+
+    def get_anchors(self, target):
+        """
+        Find the minor classes and assign all of the samples as anchors
+        :return: an array contains indices of anchors
+        """
+        unique_values, unique_count = np.unique(target, return_counts=True)
+        percentage = unique_count / np.sum(unique_count)
+        sorted_percentage_idx = np.argsort(percentage)
+
+        percentage_sum = 0
+        minor_classes = np.array([])
+        for idx in sorted_percentage_idx:
+            percentage_sum += percentage[idx]
+            if percentage_sum < 0.5:
+                minor_classes = np.append(minor_classes, idx)
+
+        minor_classes = torch.tensor(minor_classes, dtype=torch.int64, device=target.device)
+        anchors = []
+
+        if len(minor_classes) == 0:
+            print('Target:', target)
+            print('Percentage:', percentage)
+
+        for cls in minor_classes:
+            anchors.append(np.argwhere(target == cls).squeeze(0))
+        return anchors, minor_classes
+
+    def get_hard_positives(self, target, prediction, minor_class, kappa):
+        """
+        Hard negatives are data samples of a minority class c that have low prediction scores on class c by current
+        model.
+        :param target: true labels of the current batch, size: (batch_size x 1)
+        :param prediction: prediction scores for each class of a single label, size: (batch_size x n_classes)
+        :param minor_class: index of the minority class in consideration
+        :param kappa: top k samples belong to class c that have lowest prediction scores on class c
+        :return: indices of the hard-positive samples in the batch
+        """
+        class_samples_idx = np.argwhere(target == minor_class).squeeze(0)
+        topk_sorted_idx = np.argsort(prediction[class_samples_idx, minor_class])[:kappa]
+        hard_positives = class_samples_idx[topk_sorted_idx]
+        return hard_positives
+
+    def get_hard_negatives(self, target, prediction, minor_class, kappa):
+        """
+        Hard nagatives are data samples of classes other than c, but have high prediction scores on class c by current
+        model.
+        :param target: true labels of the current batch, size: (batch_size x 1)
+        :param prediction: prediction scores for each class of a single label, size: (batch_size x n_classes)
+        :param minor_class: index of the minority class in consideration
+        :param kappa: top k samples do not belong to class c but have highest prediction scores on class c
+        :return: indices of the hard-positive samples in the batch
+        """
+        class_samples_idx = np.argwhere(target != minor_class).squeeze(0)
+        # get indices of 'kappa' wrong class predictions with highest probabilities
+        bottomk_sorted_idx = np.argsort(prediction[class_samples_idx, minor_class])[-kappa:]
+        hard_negatives = class_samples_idx[bottomk_sorted_idx]
+        return hard_negatives
+
+    def compute_class_rectification_loss(self, src, target, prediction, method='relative', level='class'):
+        anchors, minor_classes = self.get_anchors(target)
+
+        crl_loss = torch.tensor(0.0, device=target.device)
+        T_size = 0
+        pred = prediction.data.cpu().detach().numpy()
+        if method == 'relative':
+            for idx, minor_class in enumerate(minor_classes):
+                hard_positives = self.get_hard_positives(target, pred, minor_class, kappa=5)
+                hard_negatives = self.get_hard_negatives(target, pred, minor_class, kappa=5)
+                T_size += len(anchors[idx]) * len(hard_positives) * len(hard_negatives)
+
+                for a in anchors[idx]:
+                    for p in hard_positives:
+                        for n in hard_negatives:
+                            if level == 'class':
+                                mj = 0.5
+                                dist_a_pos = abs(prediction[a, minor_class] - prediction[p, minor_class])
+                                dist_a_neg = prediction[a, minor_class] - prediction[n, minor_class]
+                                crl_loss += max(0, mj + dist_a_pos - dist_a_neg)
+                            elif level == 'instance':
+                                # TODO: implement
+                                raise NotImplemented
+
+            if T_size > 0:
+                crl_loss = crl_loss / T_size
+        elif method == 'absolute':
+            # TODO: implement
+            raise NotImplemented
+
+        return crl_loss
+
+    def compute_omega(self, target):
+        unique_values, unique_count = np.unique(target, return_counts=True)
+        if len(unique_values) == 1:
+            return 0
+        percentage = 100 * unique_count / np.sum(unique_count)
+        percentage.sort()
+
+        omega_imb = percentage[-1] - percentage[-2]
+        # TODO: different methods to compute omega_imb: diff between most and least dominant classes, average diff, etc.
+        return omega_imb
+
+    def compute_objective_loss(self, src, target, prediction):
+
+        eta = 0.01
+        omega_imb = self.compute_omega(target)
+        alpha = torch.tensor(eta * omega_imb, device=target.device)
+
+        criterion = nn.CrossEntropyLoss()
+        entropy_loss = criterion(prediction, target)
+        crl_loss = self.compute_class_rectification_loss(src, target, prediction)
+
+        loss = alpha * crl_loss + (1 - alpha) * entropy_loss
+
+        return loss
+

@@ -89,8 +89,10 @@ def parse_args():
     train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights'],
                        default='grad_norm',
                        help="Specify loss balancing method for multi-task learning")
-    train.add_argument('-class_balancing', default=False, action='store_true',
-                       help="Specify if class balancing should be used")
+    train.add_argument('-class_balancing', type=str, choices=['cost_sensitive', 'CRL'],
+                       default='cost_sensitive',
+                       help="Specify method to handle class imbalance. Available options: "
+                            "[cost sensitive | class rectification loss]")
 
     opt = parser.parse_args()
 
@@ -186,7 +188,7 @@ def main():
     loss_reg = nn.MSELoss()
     loss_cls_list = []
 
-    if options.class_balancing:
+    if options.class_balancing == 'cost_sensitive':
         for i in range(len(categorical.keys())):
             loss_cls_list.append(nn.CrossEntropyLoss(weight=class_weights[i].to(device)))
     else:
