@@ -2,6 +2,7 @@ import os
 import sys
 
 import torch
+import torch.nn as nn
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
@@ -243,7 +244,7 @@ class Trainer(object):
                 metric = val_loss
                 # metric = -val_avg_accuracy
 
-                if (e % 20 == 0 or e == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
+                if (e % 10 == 0 or e == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
                             'title': '{} at epoch {}'.format(label_names[i], e),
@@ -336,7 +337,7 @@ class Trainer(object):
 
         print('-------------')
         # scatter plot prediction vs target labels
-        if epoch % 20 == 0 or epoch == 1 or epoch == self.options.epoch:
+        if epoch % 10 == 0 or epoch == 1 or epoch == self.options.epoch:
             n_reg = self.modelTrain.model.n_reg
             coords = np.array(val_loader.dataset.coords)
 

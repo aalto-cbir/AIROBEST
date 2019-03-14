@@ -287,10 +287,10 @@ class ModelTrain(nn.Module):
                 target = torch.argmax(target, dim=1).long()
                 criterion_cls = self.criterion_cls_list[idx]
 
-                if self.options.class_balancing == 'cost_sensitive':
-                    single_loss = criterion_cls(prediction, target)
-                elif self.options.class_balancing == 'CRL':
+                if self.options.class_balancing == 'CRL' and self.model.training:
                     single_loss = self.compute_objective_loss(src, target, prediction)
+                else:
+                    single_loss = criterion_cls(prediction, target)
 
             task_loss.append(single_loss)
             start += n_classes
@@ -315,21 +315,51 @@ class ModelTrain(nn.Module):
         sorted_percentage_idx = np.argsort(percentage)
 
         percentage_sum = 0
-        minor_classes = np.array([])
+        minor_classes = np.array([], dtype='int64')
         for idx in sorted_percentage_idx:
             percentage_sum += percentage[idx]
             if percentage_sum < 0.5:
                 minor_classes = np.append(minor_classes, idx)
 
-        minor_classes = torch.tensor(minor_classes, dtype=torch.int64, device=target.device)
+        # minor_classes = torch.tensor(minor_classes, dtype=torch.int64, device=target.device)
         anchors = []
 
         if len(minor_classes) == 0:
             print('Target:', target)
             print('Percentage:', percentage)
 
-        for cls in minor_classes:
-            anchors.append(np.argwhere(target == cls).squeeze(0))
+        # sample_method = 'all'  # select anchors from all minor class
+        # sample_method = 'equal'  # select certain amount of anchors from each minor class
+        sample_method = 'weighted'
+
+        if sample_method == 'all':
+            for cls in minor_classes:
+                # take all minor anchors
+                anchors.append(np.argwhere(target == cls).flatten())
+        elif sample_method == 'equal':
+            count = 20
+            for cls in minor_classes:
+                # take all minor anchors
+                anchors.append(np.argwhere(target == cls).flatten()[:count])
+        elif sample_method == 'weighted':
+            # minor_percentage = percentage[minor_classes]
+            """
+            # recompute percentage for minor classes only
+            minor_percentage = minor_percentage / np.sum(minor_percentage)
+            # taking the offset of minor_percentage as the percentage to select anchor samples
+            minor_percentage = (1 - minor_percentage) / (len(minor_percentage) - 1)
+            total_anchors = 100
+            anchor_count = np.array(total_anchors * minor_percentage, dtype='int64')
+            
+            for cls, count in zip(minor_classes, anchor_count):
+                # take all minor anchors
+                anchors.append(np.argwhere(target == cls).flatten()[:count])
+            """
+            minor_percentage = 1 - percentage[minor_classes]
+            for cls, percent in zip(minor_classes, minor_percentage):
+                indices = np.argwhere(target == cls).flatten()
+                count = int(percent * len(indices) + 1)
+                anchors.append(indices[:count])
         return anchors, minor_classes
 
     def get_hard_positives(self, target, prediction, minor_class, kappa):
@@ -342,7 +372,7 @@ class ModelTrain(nn.Module):
         :param kappa: top k samples belong to class c that have lowest prediction scores on class c
         :return: indices of the hard-positive samples in the batch
         """
-        class_samples_idx = np.argwhere(target == minor_class).squeeze(0)
+        class_samples_idx = np.argwhere(target == minor_class).flatten()
         topk_sorted_idx = np.argsort(prediction[class_samples_idx, minor_class])[:kappa]
         hard_positives = class_samples_idx[topk_sorted_idx]
         return hard_positives
@@ -357,22 +387,23 @@ class ModelTrain(nn.Module):
         :param kappa: top k samples do not belong to class c but have highest prediction scores on class c
         :return: indices of the hard-positive samples in the batch
         """
-        class_samples_idx = np.argwhere(target != minor_class).squeeze(0)
+        class_samples_idx = np.argwhere(target != minor_class).flatten()
         # get indices of 'kappa' wrong class predictions with highest probabilities
         bottomk_sorted_idx = np.argsort(prediction[class_samples_idx, minor_class])[-kappa:]
         hard_negatives = class_samples_idx[bottomk_sorted_idx]
         return hard_negatives
 
     def compute_class_rectification_loss(self, src, target, prediction, method='relative', level='class'):
+
         anchors, minor_classes = self.get_anchors(target)
 
-        crl_loss = torch.tensor(0.0, device=target.device)
+        crl_loss = torch.tensor(0.0)
         T_size = 0
-        pred = prediction.data.cpu().detach().numpy()
+
         if method == 'relative':
             for idx, minor_class in enumerate(minor_classes):
-                hard_positives = self.get_hard_positives(target, pred, minor_class, kappa=5)
-                hard_negatives = self.get_hard_negatives(target, pred, minor_class, kappa=5)
+                hard_positives = self.get_hard_positives(target, prediction, minor_class, kappa=20)
+                hard_negatives = self.get_hard_negatives(target, prediction, minor_class, kappa=20)
                 T_size += len(anchors[idx]) * len(hard_positives) * len(hard_negatives)
 
                 for a in anchors[idx]:
@@ -402,8 +433,10 @@ class ModelTrain(nn.Module):
         percentage = 100 * unique_count / np.sum(unique_count)
         percentage.sort()
 
-        omega_imb = percentage[-1] - percentage[-2]
+        # omega_imb = percentage[-1] - percentage[-2]
+        # omega_imb = percentage[-1] - percentage[0]
         # TODO: different methods to compute omega_imb: diff between most and least dominant classes, average diff, etc.
+        omega_imb = (abs(percentage - np.mean(percentage)).sum() / len(percentage))
         return omega_imb
 
     def compute_objective_loss(self, src, target, prediction):
@@ -414,7 +447,11 @@ class ModelTrain(nn.Module):
 
         criterion = nn.CrossEntropyLoss()
         entropy_loss = criterion(prediction, target)
-        crl_loss = self.compute_class_rectification_loss(src, target, prediction)
+
+        target_npy = target.data.cpu().detach().numpy()
+        prediction_npy = prediction.data.cpu().detach().numpy()
+        crl_loss = self.compute_class_rectification_loss(src, target_npy, prediction_npy)
+        crl_loss = crl_loss.to(target.device)
 
         loss = alpha * crl_loss + (1 - alpha) * entropy_loss
 
