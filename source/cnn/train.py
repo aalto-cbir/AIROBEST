@@ -94,8 +94,16 @@ def parse_args():
                        default='cost_sensitive',
                        help="Specify method to handle class imbalance. Available options: "
                             "[cost sensitive | class rectification loss]")
+    parser.add_argument('-ignored_cls_tasks', nargs='+',
+                        required=False, default=[],
+                        help='List of classification task indices to ignore, indexing starts from 0')
+    parser.add_argument('-ignored_reg_tasks', nargs='+',
+                        required=False, default=[],
+                        help='List of regression task indices to ignore, indexing starts from 0')
 
     opt = parser.parse_args()
+    opt.ignored_cls_tasks = list(map(int, opt.ignored_cls_tasks))
+    opt.ignored_reg_tasks = list(map(int, opt.ignored_reg_tasks))
 
     return opt
 
@@ -119,6 +127,32 @@ def get_device(id):
     return device
 
 
+def remove_ignored_tasks(hyper_labels, options, metadata):
+    hyper_labels_cls = torch.tensor([], dtype=hyper_labels.dtype)
+    hyper_labels_reg = torch.tensor([], dtype=hyper_labels.dtype)
+    start = 0
+    categorical = metadata['categorical'].copy()
+    for idx, (key, values) in enumerate(categorical.items()):
+        n_classes = len(values)
+        if idx not in options.ignored_cls_tasks:
+            hyper_labels_cls = torch.cat((hyper_labels_cls, hyper_labels[:, :, start:(start + n_classes)]), 2)
+        else:
+            np.delete(metadata['cls_label_names'], idx)
+            del metadata['categorical'][key]
+            metadata['num_classes'] -= n_classes
+        start += n_classes
+
+    for idx in range(start, hyper_labels.shape[-1]):
+        true_idx = idx - start
+        if true_idx not in options.ignored_reg_tasks:
+            hyper_labels_reg = torch.cat((hyper_labels_reg, hyper_labels[:, :, idx:(idx+1)]), 2)
+        else:
+            del metadata['regression'][true_idx]  # normal python dict
+            np.delete(metadata['reg_label_names'], true_idx)  # numpy array
+
+    return hyper_labels_cls, hyper_labels_reg
+
+
 def main():
     print('Start training...')
     print('System info: ', sys.version)
@@ -127,10 +161,6 @@ def main():
     #######
     checkpoint = None
     options = parse_args()
-
-    # TODO: options
-    # options.disabled = 'classification'
-    options.disabled = None
 
     if options.train_from:
         print('Loading checkpoint from %s' % options.train_from)
@@ -156,26 +186,31 @@ def main():
             visualizer = None
 
     metadata = get_input_data(options.metadata)
-    categorical = metadata['categorical']
-    print('Metadata values', metadata)
-    out_cls = metadata['num_classes']
-    assert out_cls > 0, 'Number of classes has to be > 0'
-
     hyper_image = torch.load(options.hyper_data_path)
     hyper_labels = torch.load(options.tgt_path)
     norm_inv = torch.load(options.src_norm_multiplier).float()
 
-    hyper_labels_cls = hyper_labels[:, :, :out_cls]
-    hyper_labels_reg = hyper_labels[:, :, out_cls:]
+    # use percentage of main tree species as mask if ignore_zero_labels is True
+    # => only care about forest areas
+    out_cls = metadata['num_classes']
+    idx = np.where(metadata['reg_label_names'] == 'percentage_mainspecies')[0]
+    mask = hyper_labels[:, :, out_cls + idx] if metadata['ignore_zero_labels'] else norm_inv
 
-    out_reg = hyper_labels_reg.shape[2]
+    # remove ignored tasks
+    hyper_labels_cls, hyper_labels_reg = remove_ignored_tasks(hyper_labels, options, metadata)
+    categorical = metadata['categorical']
+    print('Metadata values', metadata)
+    out_cls = metadata['num_classes']
+    out_reg = hyper_labels_reg.shape[-1]
+
+    options.no_classification = True if out_cls == 0 else False
+    options.no_regression = True if out_reg == 0 else False
+
+    # hyper_labels_cls = hyper_labels[:, :, :out_cls]
+    # hyper_labels_reg = hyper_labels[:, :, out_cls:]
 
     R, C, num_bands = hyper_image.shape
 
-    # use percentage of main tree species as mask if ignore_zero_labels is True
-    # => only care about forest areas
-    idx = np.where(metadata['reg_label_names'] == 'percentage_mainspecies')[0]
-    mask = hyper_labels_reg[:, :, idx] if metadata['ignore_zero_labels'] else norm_inv
     train_set, val_set = split_data(R, C, mask, options.patch_size, options.patch_stride)
 
     print('Data distribution on training set')

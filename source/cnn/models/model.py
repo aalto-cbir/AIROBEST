@@ -279,18 +279,16 @@ class ModelTrain(nn.Module):
 
         for idx, (key, values) in enumerate(self.categorical.items()):
             n_classes = len(values)
-            if self.options.disabled == 'classification':
-                single_loss = torch.tensor(0.0, device=tgt_cls.device)
-            else:
-                prediction, target = pred_cls[:, start:(start + n_classes)], tgt_cls[:, start:(start + n_classes)]
-                # for cross entropy loss
-                target = torch.argmax(target, dim=1).long()
-                criterion_cls = self.criterion_cls_list[idx]
 
-                if self.options.class_balancing == 'CRL' and self.model.training:
-                    single_loss = self.compute_objective_loss(src, target, prediction)
-                else:
-                    single_loss = criterion_cls(prediction, target)
+            prediction, target = pred_cls[:, start:(start + n_classes)], tgt_cls[:, start:(start + n_classes)]
+            # for cross entropy loss
+            target = torch.argmax(target, dim=1).long()
+            criterion_cls = self.criterion_cls_list[idx]
+
+            if self.options.class_balancing == 'CRL' and self.model.training:
+                single_loss = self.compute_objective_loss(src, target, prediction)
+            else:
+                single_loss = criterion_cls(prediction, target)
 
             task_loss.append(single_loss)
             start += n_classes

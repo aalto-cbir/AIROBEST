@@ -53,13 +53,25 @@ class HypDataset(data.Dataset):
         else:
             src = (src - self.img_min) / (self.img_max - self.img_min)
         if self.model_name == 'LeeModel':
-            tgt_cls = get_patch(self.hyper_labels_cls, row, col, self.patch_size)
-            tgt_cls = tgt_cls.permute(2, 0, 1)
-            tgt_reg = get_patch(self.hyper_labels_reg, row, col, self.patch_size)
-            tgt_reg = tgt_reg.permute(2, 0, 1)
+            if self.hyper_labels_cls.nelement() == 0:
+                tgt_cls = float('inf')
+            else:
+                tgt_cls = get_patch(self.hyper_labels_cls, row, col, self.patch_size)
+                tgt_cls = tgt_cls.permute(2, 0, 1)
+            if self.hyper_labels_reg.nelement() == 0:
+                tgt_reg = float('inf')
+            else:
+                tgt_reg = get_patch(self.hyper_labels_reg, row, col, self.patch_size)
+                tgt_reg = tgt_reg.permute(2, 0, 1)
         else:
-            tgt_cls = self.hyper_labels_cls[row, col]  # use labels of center pixel
-            tgt_reg = self.hyper_labels_reg[row, col]  # use labels of center pixel
+            if self.hyper_labels_cls.nelement() == 0:
+                tgt_cls = float('inf')
+            else:
+                tgt_cls = self.hyper_labels_cls[row, col]  # use labels of center pixel
+            if self.hyper_labels_reg.nelement() == 0:
+                tgt_reg = float('inf')
+            else:
+                tgt_reg = self.hyper_labels_reg[row, col]  # use labels of center pixel
 
         # convert shape to pytorch image format: [channels x height x width]
         src = src.permute(2, 0, 1)

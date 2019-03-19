@@ -2,13 +2,12 @@ import os
 import sys
 
 import torch
-import torch.nn as nn
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
 import matplotlib.pyplot as plt
 
-from input.utils import plot_largest_error_patches, plot_error_histogram, envi2world, plot_pred_vs_target, \
+from input.utils import plot_largest_error_patches, plot_error_histogram, plot_pred_vs_target, \
     export_error_points
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
@@ -95,8 +94,9 @@ class Trainer(object):
                 losses.append(loss.item())
 
                 # compute accuracy
-                batch_train_accuracies, _, _ = self.compute_accuracy(pred_cls, tgt_cls)
-                train_accuracies += batch_train_accuracies
+                if pred_cls.nelement() != 0:
+                    batch_train_accuracies, _, _ = self.compute_accuracy(pred_cls, tgt_cls)
+                    train_accuracies += batch_train_accuracies
 
                 self.optimizer.zero_grad()
                 loss.backward(retain_graph=True)
@@ -221,16 +221,17 @@ class Trainer(object):
                         " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
                 )
 
-            train_accuracies = train_accuracies * 100 / len(train_loader.dataset)
-            train_avg_accuracy = torch.mean(train_accuracies)
-            accuracies = torch.cat((train_accuracies, train_avg_accuracy.view(1)))
-            accuracy_legend = ['train_{}'.format(i) for i in range(len(train_accuracies))]
-            accuracy_legend.append('train_avg')
-            print('Average epoch loss={:.5f}, avg train accuracy={:.5f}, train accuracies={}'.format(
-                epoch_loss,
-                train_avg_accuracy,
-                train_accuracies
-            ))
+            if not self.options.no_classification:
+                train_accuracies = train_accuracies * 100 / len(train_loader.dataset)
+                train_avg_accuracy = torch.mean(train_accuracies)
+                accuracies = torch.cat((train_accuracies, train_avg_accuracy.view(1)))
+                accuracy_legend = ['train_{}'.format(i) for i in range(len(train_accuracies))]
+                accuracy_legend.append('train_avg')
+                print('Average epoch loss={:.5f}, avg train accuracy={:.5f}, train accuracies={}'.format(
+                    epoch_loss,
+                    train_avg_accuracy,
+                    train_accuracies
+                ))
 
             metric = epoch_loss
             if val_loader is not None:
@@ -238,30 +239,32 @@ class Trainer(object):
                 print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
                       .format(val_loss, val_avg_accuracy.data.numpy(), val_accuracies.data.numpy()))
                 val_losses.append(val_loss)
-                accuracies = torch.cat((accuracies, val_accuracies, val_avg_accuracy.view(1)))
-                accuracy_legend = accuracy_legend + ['val_{}'.format(i) for i in range(len(val_accuracies))]
-                accuracy_legend.append('val_avg')
+                if not self.options.no_classification:
+                    accuracies = torch.cat((accuracies, val_accuracies, val_avg_accuracy.view(1)))
+                    accuracy_legend = accuracy_legend + ['val_{}'.format(i) for i in range(len(val_accuracies))]
+                    accuracy_legend.append('val_avg')
                 metric = val_loss
                 # metric = -val_avg_accuracy
 
-                if (e % self.save_every == 0 or e == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
+                if (e % self.save_every == 0 or e == 1 or e == self.options.epoch) and not self.options.no_classification:
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
                             'title': '{} at epoch {}'.format(label_names[i], e),
                             'xmax': 100
                         })
 
-            accuracy_list.append(accuracies.data.numpy())
-            accuracy_window = self.visualizer.line(
-                X=np.arange(start_epoch, e + 1, 1),
-                Y=accuracy_list,
-                update='update' if accuracy_window else None,
-                win=accuracy_window,
-                opts={'title': "Training and Validation accuracies",
-                      'xlabel': "Epoch",
-                      'ylabel': "Accuracies",
-                      'legend': accuracy_legend}
-            )
+            if not self.options.no_classification:
+                accuracy_list.append(accuracies.data.numpy())
+                accuracy_window = self.visualizer.line(
+                    X=np.arange(start_epoch, e + 1, 1),
+                    Y=accuracy_list,
+                    update='update' if accuracy_window else None,
+                    win=accuracy_window,
+                    opts={'title': "Training and Validation accuracies",
+                          'xlabel': "Epoch",
+                          'ylabel': "Accuracies",
+                          'legend': accuracy_legend}
+                )
 
             if isinstance(self.scheduler, ReduceLROnPlateau):
                 self.scheduler.step(metric)
@@ -275,7 +278,7 @@ class Trainer(object):
                 if param_group['lr'] is not None:
                     lr = param_group['lr']
                     break
-            print('Current learning rate: {}'.format(lr))
+            print('Current learning rate at epoch {}: {}'.format(e, lr))
 
     def validate(self, epoch, val_loader):
         # set model in validation mode
@@ -285,6 +288,7 @@ class Trainer(object):
         sum_loss = 0
         N_samples = len(val_loader.dataset)
         val_accuracies = torch.tensor([0.0] * len(self.categorical))  # treat all class uniformly
+        avg_accuracy = torch.tensor(0.0)
         pred_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
         tgt_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
         all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
@@ -304,84 +308,90 @@ class Trainer(object):
                 loss = torch.sum(weighted_task_loss)
 
                 sum_loss += loss.item()
-                batch_accuracies, batch_pred_indices, batch_tgt_indices = self.compute_accuracy(batch_pred_cls, tgt_cls)
-                val_accuracies += batch_accuracies
-                # concat batch predictions
-                pred_cls_indices = torch.cat((pred_cls_indices, batch_pred_indices), dim=0)
-                tgt_cls_indices = torch.cat((tgt_cls_indices, batch_tgt_indices), dim=0)
+                if not self.options.no_classification:
+                    batch_accuracies, batch_pred_indices, batch_tgt_indices = self.compute_accuracy(batch_pred_cls, tgt_cls)
+                    val_accuracies += batch_accuracies
+                    # concat batch predictions
+                    pred_cls_indices = torch.cat((pred_cls_indices, batch_pred_indices), dim=0)
+                    tgt_cls_indices = torch.cat((tgt_cls_indices, batch_tgt_indices), dim=0)
 
-                batch_pred_reg = batch_pred_reg.to(torch.device('cpu'))
-                tgt_reg = tgt_reg.to(torch.device('cpu'))
-                all_tgt_reg = torch.cat((all_tgt_reg, tgt_reg), dim=0)
-                all_pred_reg = torch.cat((all_pred_reg, batch_pred_reg), dim=0)
+                if not self.options.no_regression:
+                    batch_pred_reg = batch_pred_reg.to(torch.device('cpu'))
+                    tgt_reg = tgt_reg.to(torch.device('cpu'))
+                    all_tgt_reg = torch.cat((all_tgt_reg, tgt_reg), dim=0)
+                    all_pred_reg = torch.cat((all_pred_reg, batch_pred_reg), dim=0)
 
         # return average validation loss
+
         average_loss = sum_loss / len(val_loader)
-        val_accuracies = val_accuracies * 100 / N_samples
-        avg_accuracy = torch.mean(val_accuracies)
         conf_matrices = []
-        print('--Metrics--')
-        val_balanced_accuracies = []
-        for i in range(tgt_cls_indices.shape[-1]):
-            conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
-            # convert to percentage along rows
-            conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
-            conf_matrix = np.around(100 * conf_matrix, decimals=2)
-            conf_matrices.append(conf_matrix)
-            label_accuracy = np.mean(conf_matrix.diagonal())
-            val_balanced_accuracies.append(label_accuracy)
-            print('---Task %s---' % i)
-            precision = precision_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
-            recall = recall_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
-            f1 = f1_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
-            print('Precision:', precision)
-            print('Recall:', recall)
-            print('F1 score', f1)
+        if not self.options.no_classification:
+            val_accuracies = val_accuracies * 100 / N_samples
+            avg_accuracy = torch.mean(val_accuracies)
 
-        avg_balanced_accuracy = np.mean(val_balanced_accuracies)
-        print('Average balanced accuracy: %s, label accuracies: %s' % (avg_balanced_accuracy, val_balanced_accuracies))
-        print('-------------')
+            print('--Metrics--')
+            val_balanced_accuracies = []
+            for i in range(tgt_cls_indices.shape[-1]):
+                conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
+                # convert to percentage along rows
+                conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
+                conf_matrix = np.around(100 * conf_matrix, decimals=2)
+                conf_matrices.append(conf_matrix)
+                label_accuracy = np.around(np.mean(conf_matrix.diagonal()), decimals=2)
+                val_balanced_accuracies.append(label_accuracy)
+                print('---Task %s---' % i)
+                precision = precision_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+                recall = recall_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+                f1 = f1_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+                print('Precision:', precision)
+                print('Recall:', recall)
+                print('F1 score', f1)
+
+            avg_balanced_accuracy = np.around(np.mean(val_balanced_accuracies), decimals=2)
+            print('Average balanced accuracy: %s, label accuracies: %s' % (avg_balanced_accuracy, val_balanced_accuracies))
+            print('-------------')
         # scatter plot prediction vs target labels
-        if epoch % self.save_every == 0 or epoch == 1 or epoch == self.options.epoch:
-            n_reg = self.modelTrain.model.n_reg
-            coords = np.array(val_loader.dataset.coords)
+        if not self.options.no_regression:
+            if epoch % self.save_every == 0 or epoch == 1 or epoch == self.options.epoch:
+                n_reg = self.modelTrain.model.n_reg
+                coords = np.array(val_loader.dataset.coords)
 
-            cmap = plt.get_cmap('viridis')
-            colors = [cmap(i) for i in np.linspace(0, 1, n_reg)]
-            names = self.metadata['reg_label_names']
+                cmap = plt.get_cmap('viridis')
+                colors = [cmap(i) for i in np.linspace(0, 1, n_reg)]
+                names = self.metadata['reg_label_names']
 
-            rmsq_errors = torch.abs(all_pred_reg - all_tgt_reg)
+                rmsq_errors = torch.abs(all_pred_reg - all_tgt_reg)
 
-            sum_errors = torch.sum(rmsq_errors, dim=1)
-            plot_error_histogram(sum_errors, 100, 'all_tasks', epoch, self.image_path)
+                sum_errors = torch.sum(rmsq_errors, dim=1)
+                plot_error_histogram(sum_errors, 100, 'all_tasks', epoch, self.image_path)
 
-            k = N_samples // 10  # 10% of the largest error
-            value, indices = torch.topk(sum_errors, k, dim=0, largest=True, sorted=False)
-
-            topk_points = coords[indices]
-            task_label = self.hyper_labels_reg[:, :, 0]
-            # chose the first task label just for visualization
-            plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
-                                       'all_tasks', self.image_path, epoch)
-
-            export_error_points(coords, rmsq_errors, self.hypGt, sum_errors, names, epoch, self.ckpt_path)
-
-            for i in range(n_reg):
-                x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
-
-                plot_pred_vs_target(x, y, colors[i], names[i], self.image_path, epoch)
-
-                # plot error histogram
-                mse_errors = torch.abs(x - y)
-                plot_error_histogram(mse_errors, 100, names[i], epoch, self.image_path)
-
-                # plot top k largest errors on the map
-                task_label = self.hyper_labels_reg[:, :, i]
-                value, indices = torch.topk(mse_errors, k, dim=0, largest=True, sorted=False)
+                k = N_samples // 10  # 10% of the largest error
+                value, indices = torch.topk(sum_errors, k, dim=0, largest=True, sorted=False)
 
                 topk_points = coords[indices]
+                task_label = self.hyper_labels_reg[:, :, 0]
+                # chose the first task label just for visualization
                 plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
-                                           names[i], self.image_path, epoch)
+                                           'all_tasks', self.image_path, epoch)
+
+                export_error_points(coords, rmsq_errors, self.hypGt, sum_errors, names, epoch, self.ckpt_path)
+
+                for i in range(n_reg):
+                    x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
+
+                    plot_pred_vs_target(x, y, colors[i], names[i], self.image_path, epoch)
+
+                    # plot error histogram
+                    mse_errors = torch.abs(x - y)
+                    plot_error_histogram(mse_errors, 100, names[i], epoch, self.image_path)
+
+                    # plot top k largest errors on the map
+                    task_label = self.hyper_labels_reg[:, :, i]
+                    value, indices = torch.topk(mse_errors, k, dim=0, largest=True, sorted=False)
+
+                    topk_points = coords[indices]
+                    plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
+                                               names[i], self.image_path, epoch)
 
         return average_loss, avg_accuracy, val_accuracies, conf_matrices
 

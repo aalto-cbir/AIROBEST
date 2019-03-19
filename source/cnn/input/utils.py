@@ -417,6 +417,8 @@ def compute_data_distribution(labels, dataset, categorical):
     :param categorical: dictionary contains class info (equivalent to  metadata['categorical'])
     :return:
     """
+    if labels.nelement() == 0:
+        return []
     # TODO: make sure training and validation sets include all classes for each classification tasks
     data_labels = []  # labels of data points in the dataset
     for (r, c) in dataset:
