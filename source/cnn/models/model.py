@@ -183,11 +183,11 @@ class PhamModel(nn.Module):
         self.n_planes = n_planes
         self.patch_size = patch_size
 
-        self.conv1 = nn.Conv3d(1, n_planes, (32, 4, 4))
+        self.conv1 = nn.Conv3d(1, n_planes, (16, 4, 4))
         self.pool1 = nn.MaxPool3d((1, 2, 2))
-        self.conv2 = nn.Conv3d(n_planes, n_planes, (32, 5, 5))
+        self.conv2 = nn.Conv3d(n_planes, n_planes, (16, 4, 4))
         self.pool2 = nn.MaxPool3d((1, 2, 2))
-        self.conv3 = nn.Conv3d(n_planes, n_planes, (32, 4, 4))
+        self.conv3 = nn.Conv3d(n_planes, n_planes, (16, 4, 4))
 
         self.features_size = self._get_final_flattened_size()
         print("Feature size:", self.features_size)

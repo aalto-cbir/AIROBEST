@@ -29,6 +29,7 @@ class Trainer(object):
         self.checkpoint = checkpoint
         self.hyper_labels_reg = hyper_labels_reg
         self.hypGt = get_geotrans(self.options.hyper_data_header)
+        self.save_every = 10  # specify number of epochs to save model
 
         save_dir = self.options.save_dir or self.options.model
         self.ckpt_path = './checkpoint/{}'.format(save_dir)
@@ -49,7 +50,6 @@ class Trainer(object):
             start_epoch = 1
             train_step = 0
             start_step = 0
-        save_every = 10  # specify number of epochs to save model
         sum_loss = 0.0
         avg_losses = []
         val_losses = []
@@ -207,7 +207,7 @@ class Trainer(object):
 
                 train_step += 1
 
-            if e % save_every == 0:
+            if e % self.save_every == 0 or e == self.options.epoch:
                 self.save_checkpoint(e, train_step, initial_task_loss)
             epoch_loss = epoch_loss / len(train_loader)
             if self.options.loss_balancing == 'grad_norm':
@@ -244,7 +244,7 @@ class Trainer(object):
                 metric = val_loss
                 # metric = -val_avg_accuracy
 
-                if (e % 10 == 0 or e == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
+                if (e % self.save_every == 0 or e == 1 or e == self.options.epoch) and self.options.disabled != 'classification':
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
                             'title': '{} at epoch {}'.format(label_names[i], e),
@@ -284,7 +284,7 @@ class Trainer(object):
 
         sum_loss = 0
         N_samples = len(val_loader.dataset)
-        val_accuracies = torch.tensor([0.0] * len(self.categorical))
+        val_accuracies = torch.tensor([0.0] * len(self.categorical))  # treat all class uniformly
         pred_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
         tgt_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
         all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
@@ -321,12 +321,15 @@ class Trainer(object):
         avg_accuracy = torch.mean(val_accuracies)
         conf_matrices = []
         print('--Metrics--')
+        val_balanced_accuracies = []
         for i in range(tgt_cls_indices.shape[-1]):
             conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
             # convert to percentage along rows
             conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
-            conf_matrix = 100 * np.around(conf_matrix, decimals=2)
+            conf_matrix = np.around(100 * conf_matrix, decimals=2)
             conf_matrices.append(conf_matrix)
+            label_accuracy = np.mean(conf_matrix.diagonal())
+            val_balanced_accuracies.append(label_accuracy)
             print('---Task %s---' % i)
             precision = precision_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
             recall = recall_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
@@ -335,9 +338,11 @@ class Trainer(object):
             print('Recall:', recall)
             print('F1 score', f1)
 
+        avg_balanced_accuracy = np.mean(val_balanced_accuracies)
+        print('Average balanced accuracy: %s, label accuracies: %s' % (avg_balanced_accuracy, val_balanced_accuracies))
         print('-------------')
         # scatter plot prediction vs target labels
-        if epoch % 10 == 0 or epoch == 1 or epoch == self.options.epoch:
+        if epoch % self.save_every == 0 or epoch == 1 or epoch == self.options.epoch:
             n_reg = self.modelTrain.model.n_reg
             coords = np.array(val_loader.dataset.coords)
 

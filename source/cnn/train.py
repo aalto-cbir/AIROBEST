@@ -18,6 +18,7 @@ from models.model import ChenModel, LeeModel, PhamModel, ModelTrain
 from input.utils import split_data, compute_data_distribution
 from input.data_loader import get_loader
 from trainer import Trainer
+from input.focal_loss import FocalLoss
 
 
 def parse_args():
@@ -89,7 +90,7 @@ def parse_args():
     train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights'],
                        default='grad_norm',
                        help="Specify loss balancing method for multi-task learning")
-    train.add_argument('-class_balancing', type=str, choices=['cost_sensitive', 'CRL'],
+    train.add_argument('-class_balancing', type=str, choices=['cost_sensitive', 'focal_loss', 'CRL'],
                        default='cost_sensitive',
                        help="Specify method to handle class imbalance. Available options: "
                             "[cost sensitive | class rectification loss]")
@@ -188,9 +189,13 @@ def main():
     loss_reg = nn.MSELoss()
     loss_cls_list = []
 
-    if options.class_balancing == 'cost_sensitive': # or options.class_balancing == 'CRL'
+    if options.class_balancing == 'cost_sensitive':  # or options.class_balancing == 'CRL'
         for i in range(len(categorical.keys())):
             loss_cls_list.append(nn.CrossEntropyLoss(weight=class_weights[i].to(device)))
+    elif options.class_balancing == 'focal_loss':
+        for i in range(len(categorical.keys())):
+            # loss_cls_list.append(FocalLoss(class_num=len(class_weights[i]), gamma=1))
+            loss_cls_list.append(FocalLoss(weight=class_weights[i].to(device)))
     else:
         for i in range(len(categorical.keys())):
             loss_cls_list.append(nn.CrossEntropyLoss())
@@ -252,7 +257,7 @@ def main():
                 batch_size=options.batch_size,
                 device=device.type)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     print(modelTrain)
     print('Classification loss function:', loss_cls_list)
     print('Regression loss function:', loss_reg)

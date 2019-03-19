@@ -145,7 +145,7 @@ def split_data(rows, cols, mask, patch_size, stride=1, mode='grid'):
     train = []
     val = []
     coords = []
-    random_state = 646  # 646, 919, 390, 101
+    random_state = 797  # 646, 919, 390, 101
     # random_state = np.random.randint(100, 1000)
     print('Random seed:', random_state)
     if mode == 'grid':
@@ -431,11 +431,11 @@ def compute_data_distribution(labels, dataset, categorical):
         unique_values, unique_count = np.unique(indices, return_counts=True)
         percentage = unique_count / np.sum(unique_count)
         # class_weight = torch.from_numpy(1 - percentage).float()
-        class_weight = torch.from_numpy(np.max(percentage) / percentage).float()
+        # class_weight = torch.from_numpy(np.max(percentage) / percentage).float()
 
         # inverse median frequency
-        # median = np.median(percentage)
-        # class_weight = torch.from_numpy(median / percentage).float()
+        median = np.median(percentage)
+        class_weight = torch.from_numpy(median / percentage).float()
         # weights.append(class_weight)
 
         # different method to calculate class weights
