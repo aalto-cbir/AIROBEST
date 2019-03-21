@@ -134,21 +134,25 @@ def remove_ignored_tasks(hyper_labels, options, metadata):
     categorical = metadata['categorical'].copy()
     for idx, (key, values) in enumerate(categorical.items()):
         n_classes = len(values)
+        valid_indices = options.ignored_cls_tasks
+        valid_indices = valid_indices[valid_indices < len(metadata['cls_label_names'])]
+        metadata['cls_label_names'] = np.delete(metadata['cls_label_names'], valid_indices)
         if idx not in options.ignored_cls_tasks:
             hyper_labels_cls = torch.cat((hyper_labels_cls, hyper_labels[:, :, start:(start + n_classes)]), 2)
         else:
-            metadata['cls_label_names'] = np.delete(metadata['cls_label_names'], idx)
             del metadata['categorical'][key]
             metadata['num_classes'] -= n_classes
         start += n_classes
 
     for idx in range(start, hyper_labels.shape[-1]):
         true_idx = idx - start
+        valid_indices = options.ignored_reg_tasks
+        valid_indices = valid_indices[valid_indices < len(metadata['reg_label_names'])]
+        metadata['reg_label_names'] = np.delete(metadata['reg_label_names'], valid_indices)
         if true_idx not in options.ignored_reg_tasks:
             hyper_labels_reg = torch.cat((hyper_labels_reg, hyper_labels[:, :, idx:(idx+1)]), 2)
         else:
             del metadata['regression'][true_idx]  # normal python dict
-            metadata['reg_label_names'] = np.delete(metadata['reg_label_names'], true_idx)  # numpy array
 
     return hyper_labels_cls, hyper_labels_reg
 
