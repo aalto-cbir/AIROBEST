@@ -98,8 +98,7 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt, should_rem
         stand_id_data = spectral.open_image('/proj/deepsat/hyperspectral/standids_in_pixels.hdr')
         stand_ids_full = stand_id_data.open_memmap()
         stand_ids_mapped = np.array(stand_ids_full[r:(r + rows), c:(c + cols)], dtype='int')  # shape RxCx1
-        stand_ids_mapped = np.squeeze(stand_ids_mapped) # remove the single-dimensional entries, size RxC
-        import pandas as pd
+        stand_ids_mapped = np.squeeze(stand_ids_mapped)  # remove the single-dimensional entries, size RxC
         bad_stand_df = pd.read_csv('/proj/deepsat/hyperspectral/bad_stands.csv')
         bad_stand_list = bad_stand_df['standid'].tolist()
         for stand_id in bad_stand_list:
@@ -416,7 +415,7 @@ def main():
     n_reg_tasks = len(reg_task_indices)
     sum_pixels = np.sum(hyper_image, axis=-1)
     zero_count = R * C - np.count_nonzero(sum_pixels)
-    print('Zero count in image:', R, C, B, sum_pixels.shape, zero_count)
+    print('Zero count in image:', R, C, B, hyper_labels.shape, sum_pixels.shape, zero_count)
     hyper_labels[sum_pixels == 0] = 0
 
     cls_labels = hyper_labels[:, :, options.categorical_bands]
