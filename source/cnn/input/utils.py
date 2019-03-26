@@ -4,6 +4,8 @@ import numpy as np
 from PIL import Image
 from sklearn.model_selection import train_test_split
 import torch
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import string
@@ -250,7 +252,12 @@ def plot_pred_vs_target(x, y, color, name, save_path, epoch):
     g = sns.JointGrid(x, y, height=10, xlim=(-0.1, 1.1), ylim=(-0.1, 1.1))
     # g = sns.jointplot(x, y, kind='reg')
     g = g.plot_joint(plt.scatter, color=color, s=30, edgecolor="white")
-    g = g.plot_marginals(sns.distplot, kde=True, color=color)
+    try:
+        g = g.plot_marginals(sns.distplot, kde=True, color=color)
+    except Exception as e:
+        print("Encountered error when plotting join plot. Error: " + str(e))
+        # g = g.plot_marginals(sns.distplot, kde=False, color=color)
+
     g = g.annotate(stats.pearsonr)
     g.set_axis_labels(xlabel='Target', ylabel='Prediction')
 
@@ -264,10 +271,13 @@ def plot_pred_vs_target(x, y, color, name, save_path, epoch):
     g2.savefig('{}/task_{}_hexbin_e{}.png'.format(save_path, name, epoch))
 
     # kernel density estimation (kde) plot
-    g3 = sns.jointplot(x, y, height=10, xlim=(-0.1, 1.1), ylim=(-0.1, 1.1), kind='kde', color=color)
-    g3.set_axis_labels(xlabel='Target', ylabel='Prediction')
-    g3.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
-    g3.savefig('{}/task_{}_kde_e{}.png'.format(save_path, name, epoch))
+    try:
+        g3 = sns.jointplot(x, y, height=10, xlim=(-0.1, 1.1), ylim=(-0.1, 1.1), kind='kde', color=color)
+        g3.set_axis_labels(xlabel='Target', ylabel='Prediction')
+        g3.ax_joint.plot([0, 1], [0, 1], c='r', linestyle='--', alpha=0.9, label='Ideal prediction')
+        g3.savefig('{}/task_{}_kde_e{}.png'.format(save_path, name, epoch))
+    except Exception as e:
+        print("Encountered error when plotting kde. Error: " + str(e))
     plt.close('all')
 
 

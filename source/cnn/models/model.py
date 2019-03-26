@@ -80,6 +80,7 @@ class LeeModel(nn.Module):
     https://www.researchgate.net/publication/301876505_Contextual_Deep_CNN_Based_Hyperspectral_Classification
     https://arxiv.org/pdf/1604.03519.pdf
     """
+
     @staticmethod
     def weight_init(m):
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
@@ -165,7 +166,236 @@ class LeeModel(nn.Module):
 
         return x_cls, x_reg
 
-class PhamModel(nn.Module):
+
+class SharmaModel(nn.Module):
+    """
+    HYPERSPECTRAL CNN FOR IMAGE CLASSIFICATION & BAND SELECTION, WITH APPLICATION
+    TO FACE RECOGNITION
+    Vivek Sharma, Ali Diba, Tinne Tuytelaars, Luc Van Gool
+    Technical Report, KU Leuven/ETH Zürich
+    https://pdfs.semanticscholar.org/a707/06f9f20a5b9c54fea99e02f93f14b2d87228.pdf
+    """
+
+    @staticmethod
+    def weight_init(m):
+        if isinstance(m, (nn.Linear, nn.Conv3d)):
+            init.kaiming_normal_(m.weight)
+            # init.zeros_(m.bias)
+            init.constant_(m.bias, 0)
+
+    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=64):
+        super(SharmaModel, self).__init__()
+        self.input_channels = input_channels
+        self.patch_size = patch_size
+
+        # An input image of size 263x263 pixels is fed to conv1
+        # with 96 kernels of size 6x6x96 with a stride of 2 pixels
+        self.conv1 = nn.Conv3d(1, 96, (input_channels, 6, 6), stride=(1, 1, 1))
+        self.conv1_bn = nn.BatchNorm3d(96)
+        self.pool1 = nn.MaxPool3d((1, 2, 2))
+        #  256 kernels of size 3x3x256 with a stride of 2 pixels
+        self.conv2 = nn.Conv3d(1, 256, (96, 3, 3), stride=(1, 1, 1))
+        self.conv2_bn = nn.BatchNorm3d(256)
+        self.pool2 = nn.MaxPool3d((1, 2, 2))
+        # 512 kernels of size 3x3x512 with a stride of 1 pixel
+        self.conv3 = nn.Conv3d(1, 512, (256, 4, 4), stride=(1, 1, 1))
+        # Considering those large kernel values, I assume they actually merge the
+        # 3D tensors at each step
+
+        self.features_size = self._get_final_flattened_size()
+
+        # The fc1 has 1024 outputs, where dropout was applied after
+        # fc1 with a rate of 0.5
+        self.fc_shared = nn.Linear(self.features_size, 1024)
+        self.dropout = nn.Dropout(p=0.5)
+        # self.fc2 = nn.Linear(1024, n_classes)
+        categorical = metadata['categorical']
+        self.n_cls = len(categorical.keys())
+        self.n_reg = out_reg
+        for idx, (key, values) in enumerate(categorical.items()):
+            setattr(self, 'fc_cls_{}_1'.format(idx), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_cls_{}_2'.format(idx), torch.nn.Linear(200, len(values)))
+
+        for i in range(out_reg):
+            setattr(self, 'fc_reg_{}_1'.format(i), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_reg_{}_2'.format(i), torch.nn.Linear(200, 1))
+
+        self.apply(self.weight_init)
+
+    def _get_final_flattened_size(self):
+        with torch.no_grad():
+            x = torch.zeros((1, 1, self.input_channels,
+                             self.patch_size, self.patch_size))
+            x = F.relu(self.conv1_bn(self.conv1(x)))
+            x = self.pool1(x)
+            print(x.size())
+            b, t, c, w, h = x.size()
+            x = x.view(b, 1, t * c, w, h)
+            x = F.relu(self.conv2_bn(self.conv2(x)))
+            x = self.pool2(x)
+            print(x.size())
+            b, t, c, w, h = x.size()
+            x = x.view(b, 1, t * c, w, h)
+            x = F.relu(self.conv3(x))
+            print(x.size())
+            _, t, c, w, h = x.size()
+        return t * c * w * h
+
+    def get_last_shared_layer(self):
+        return self.fc_shared
+
+    def forward(self, x):
+        x = F.relu(self.conv1_bn(self.conv1(x)))
+        x = self.pool1(x)
+        b, t, c, w, h = x.size()
+        x = x.view(b, 1, t * c, w, h)
+        x = F.relu(self.conv2_bn(self.conv2(x)))
+        x = self.pool2(x)
+        b, t, c, w, h = x.size()
+        x = x.view(b, 1, t * c, w, h)
+        x = F.relu(self.conv3(x))
+        x = x.view(-1, self.features_size)
+        x = self.fc_shared(x)
+        x = self.dropout(x)
+        # x = self.fc2(x)
+
+        pred_cls = torch.tensor([], device=x.device)
+
+        # for classification task
+        for i in range(self.n_cls):
+            layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
+            x_cls = F.relu(layer1(x))
+            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
+
+        # for regression task
+        pred_reg = torch.tensor([], device=x.device)
+
+        for i in range(self.n_reg):
+            layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
+            x_reg = F.relu(layer1(x))
+            pred_reg = torch.cat((pred_reg, layer2(x_reg)), 1)
+
+        return pred_cls, pred_reg
+
+
+class HeModel(nn.Module):
+    """
+    MULTI-SCALE 3D DEEP CONVOLUTIONAL NEURAL NETWORK FOR HYPERSPECTRAL
+    IMAGE CLASSIFICATION
+    Mingyi He, Bo Li, Huahui Chen
+    IEEE International Conference on Image Processing (ICIP) 2017
+    https://ieeexplore.ieee.org/document/8297014/
+    """
+
+    @staticmethod
+    def weight_init(m):
+        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
+            init.kaiming_uniform(m.weight)
+            init.constant_(m.bias, 0)
+
+    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=7):
+        super(HeModel, self).__init__()
+        self.input_channels = input_channels
+        self.patch_size = patch_size
+
+        self.conv1 = nn.Conv3d(1, 16, (11, 3, 3), stride=(3, 1, 1))
+        self.conv2_1 = nn.Conv3d(16, 16, (1, 1, 1), padding=(0, 0, 0))
+        self.conv2_2 = nn.Conv3d(16, 16, (3, 1, 1), padding=(1, 0, 0))
+        self.conv2_3 = nn.Conv3d(16, 16, (5, 1, 1), padding=(2, 0, 0))
+        self.conv2_4 = nn.Conv3d(16, 16, (11, 1, 1), padding=(5, 0, 0))
+        self.conv3_1 = nn.Conv3d(16, 16, (1, 1, 1), padding=(0, 0, 0))
+        self.conv3_2 = nn.Conv3d(16, 16, (3, 1, 1), padding=(1, 0, 0))
+        self.conv3_3 = nn.Conv3d(16, 16, (5, 1, 1), padding=(2, 0, 0))
+        self.conv3_4 = nn.Conv3d(16, 16, (11, 1, 1), padding=(5, 0, 0))
+        self.conv4 = nn.Conv3d(16, 16, (3, 2, 2))
+        self.pooling = nn.MaxPool2d((3, 2, 2), stride=(3, 2, 2))
+
+        self.dropout = nn.Dropout(p=0.6)
+
+        self.features_size = self._get_final_flattened_size()
+
+        self.fc_shared = nn.Linear(self.features_size, 1024)
+
+        categorical = metadata['categorical']
+        self.n_cls = len(categorical.keys())
+        self.n_reg = out_reg
+        for idx, (key, values) in enumerate(categorical.items()):
+            # setattr(self, 'fc_cls_{}_1'.format(idx), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_cls_{}_2'.format(idx), torch.nn.Linear(1024, len(values)))
+
+        for i in range(out_reg):
+            # setattr(self, 'fc_reg_{}_1'.format(i), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_reg_{}_2'.format(i), torch.nn.Linear(1024, 1))
+
+        self.apply(self.weight_init)
+
+    def _get_final_flattened_size(self):
+        with torch.no_grad():
+            x = torch.zeros((1, 1, self.input_channels,
+                             self.patch_size, self.patch_size))
+            x = self.conv1(x)
+            x2_1 = self.conv2_1(x)
+            x2_2 = self.conv2_2(x)
+            x2_3 = self.conv2_3(x)
+            x2_4 = self.conv2_4(x)
+            x = x2_1 + x2_2 + x2_3 + x2_4
+            x3_1 = self.conv3_1(x)
+            x3_2 = self.conv3_2(x)
+            x3_3 = self.conv3_3(x)
+            x3_4 = self.conv3_4(x)
+            x = x3_1 + x3_2 + x3_3 + x3_4
+            x = self.conv4(x)
+            _, t, c, w, h = x.size()
+        return t * c * w * h
+
+    def get_last_shared_layer(self):
+        return self.fc_shared
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x2_1 = self.conv2_1(x)
+        x2_2 = self.conv2_2(x)
+        x2_3 = self.conv2_3(x)
+        x2_4 = self.conv2_4(x)
+        x = x2_1 + x2_2 + x2_3 + x2_4
+        x = F.relu(x)
+        x3_1 = self.conv3_1(x)
+        x3_2 = self.conv3_2(x)
+        x3_3 = self.conv3_3(x)
+        x3_4 = self.conv3_4(x)
+        x = x3_1 + x3_2 + x3_3 + x3_4
+        x = F.relu(x)
+        x = F.relu(self.conv4(x))
+        x = x.view(-1, self.features_size)
+        x = self.dropout(x)
+        x = self.fc_shared(x)
+
+        pred_cls = torch.tensor([], device=x.device)
+
+        # for classification task
+        for i in range(self.n_cls):
+            # layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
+            # x_cls = F.relu(layer1(x))
+            # pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
+            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x))), 1)
+
+        # for regression task
+        pred_reg = torch.tensor([], device=x.device)
+
+        for i in range(self.n_reg):
+            # layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
+            # x_reg = F.relu(layer1(x))
+            # pred_reg = torch.cat((pred_reg, layer2(x_reg)), 1)
+            pred_reg = torch.cat((pred_reg, layer2(x)), 1)
+
+        return pred_cls, pred_reg
+
+
+class PhamModel3layers(nn.Module):
     """
     CNN models for multi-task learning, inspired by Chen model
     """
@@ -173,7 +403,8 @@ class PhamModel(nn.Module):
     @staticmethod
     def weight_init(m):
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
-            init.xavier_normal_(m.weight)
+            # init.xavier_normal_(m.weight)
+            init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
     def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
@@ -182,7 +413,7 @@ class PhamModel(nn.Module):
         self.n_planes = n_planes
         self.patch_size = patch_size
 
-        self.conv1 = nn.Conv3d(1, n_planes, (32, 4, 4))
+        self.conv1 = nn.Conv3d(1, n_planes, (32, 5, 5))
         self.pool1 = nn.MaxPool3d((1, 2, 2))
         self.conv2 = nn.Conv3d(n_planes, n_planes, (32, 5, 5))
         self.pool2 = nn.MaxPool3d((1, 2, 2))
@@ -232,10 +463,7 @@ class PhamModel(nn.Module):
         x = x.view(-1, self.features_size)
         x = F.relu(self.fc_shared(x))
 
-        if torch.cuda.is_available():
-            pred_cls = torch.tensor([]).cuda()
-        else:
-            pred_cls = torch.tensor([])
+        pred_cls = torch.tensor([], device=x.device)
 
         # for classification task
         for i in range(self.n_cls):
@@ -244,11 +472,9 @@ class PhamModel(nn.Module):
             x_cls = F.relu(layer1(x))
             pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
             # pred_cls = torch.cat((pred_cls, layer2(x_cls)), 1)
+
         # for regression task
-        if torch.cuda.is_available():
-            pred_reg = torch.tensor([]).cuda()
-        else:
-            pred_reg = torch.tensor([])
+        pred_reg = torch.tensor([], device=x.device)
 
         for i in range(self.n_reg):
             layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
@@ -260,12 +486,108 @@ class PhamModel(nn.Module):
         return pred_cls, pred_reg
 
 
+class PhamModel(nn.Module):
+    """
+    CNN models for multi-task learning, inspired by Chen model
+    """
+
+    @staticmethod
+    def weight_init(m):
+        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
+            # init.xavier_normal_(m.weight)
+            init.normal_(m.weight, std=0.01)
+            init.constant_(m.bias, 0)
+
+    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+        super(PhamModel, self).__init__()
+        self.input_channels = input_channels
+        self.n_planes = n_planes
+        self.patch_size = patch_size
+
+        self.conv1 = nn.Conv3d(1, n_planes, (16, 4, 4))
+        self.pool1 = nn.MaxPool3d((1, 2, 2))
+        self.conv2 = nn.Conv3d(n_planes, n_planes, (16, 5, 5))
+        self.pool2 = nn.MaxPool3d((1, 2, 2))
+        self.conv3 = nn.Conv3d(n_planes, n_planes, (32, 1, 1))
+        self.conv4 = nn.Conv3d(n_planes, n_planes, (32, 1, 1))
+        self.conv5 = nn.Conv3d(n_planes, n_planes, (16, 4, 4))
+
+        self.features_size = self._get_final_flattened_size()
+        print("Feature size:", self.features_size)
+        self.fc_shared = nn.Linear(self.features_size, 1024)
+
+        categorical = metadata['categorical']
+        self.n_cls = len(categorical.keys())
+        self.n_reg = out_reg
+        for idx, (key, values) in enumerate(categorical.items()):
+            setattr(self, 'fc_cls_{}_1'.format(idx), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_cls_{}_2'.format(idx), torch.nn.Linear(200, len(values)))
+
+        for i in range(out_reg):
+            setattr(self, 'fc_reg_{}_1'.format(i), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_reg_{}_2'.format(i), torch.nn.Linear(200, 1))
+
+        self.dropout = nn.Dropout(p=0.3)
+
+        self.apply(self.weight_init)
+
+    def _get_final_flattened_size(self):
+        with torch.no_grad():
+            x = torch.zeros((1, 1, self.input_channels,
+                             self.patch_size, self.patch_size))
+            x = self.pool1(self.conv1(x))
+            x = self.pool2(self.conv2(x))
+            x = self.conv3(x)
+            x = self.conv4(x)
+            x = self.conv5(x)
+            _, t, c, w, h = x.size()
+        return t * c * w * h
+
+    def get_last_shared_layer(self):
+        return self.fc_shared
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = self.pool1(x)
+        x = self.dropout(x)
+        x = F.relu(self.conv2(x))
+        x = self.pool2(x)
+        x = self.dropout(x)
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = F.relu(self.conv5(x))
+        x = self.dropout(x)
+        x = x.view(-1, self.features_size)
+        x = F.relu(self.fc_shared(x))
+
+        pred_cls = torch.tensor([], device=x.device)
+
+        # for classification task
+        for i in range(self.n_cls):
+            layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
+            x_cls = F.relu(layer1(x))
+            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
+            # pred_cls = torch.cat((pred_cls, layer2(x_cls)), 1)
+
+        # for regression task
+        pred_reg = torch.tensor([], device=x.device)
+
+        for i in range(self.n_reg):
+            layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
+            x_reg = F.relu(layer1(x))
+            pred_reg = torch.cat((pred_reg, layer2(x_reg)), 1)
+            # pred_reg = torch.cat((pred_reg, F.sigmoid(layer2(x_reg))), 1)  # performed worse
+
+        return pred_cls, pred_reg
+
 class ModelTrain(nn.Module):
     def __init__(self, model, criterion_cls_list, criterion_reg, metadata, options):
         super(ModelTrain, self).__init__()
         self.model = model
         self.task_count = model.n_cls + model.n_reg
-        self.task_weights = torch.nn.Parameter(torch.tensor([1.0]*self.task_count).float())
+        self.task_weights = torch.nn.Parameter(torch.tensor([1.0] * self.task_count).float())
         self.criterion_cls_list = criterion_cls_list
         self.criterion_reg = criterion_reg
         self.categorical = metadata['categorical']
@@ -453,4 +775,3 @@ class ModelTrain(nn.Module):
         loss = alpha * crl_loss + (1 - alpha) * entropy_loss
 
         return loss
-

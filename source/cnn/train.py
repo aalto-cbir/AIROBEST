@@ -14,7 +14,7 @@ from torchsummary import summary
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import visdom
 
-from models.model import ChenModel, LeeModel, PhamModel, ModelTrain
+from models.model import ChenModel, LeeModel, PhamModel, SharmaModel, HeModel, ModelTrain
 from input.utils import split_data, compute_data_distribution
 from input.data_loader import get_loader
 from trainer import Trainer
@@ -74,7 +74,7 @@ def parse_args():
                        default='',
                        help="Path to checkpoint to start training from.")
     train.add_argument('-model', type=str,
-                       default='ChenModel', choices=['ChenModel', 'LeeModel', 'PhamModel'],
+                       default='ChenModel', choices=['ChenModel', 'LeeModel', 'PhamModel', 'SharmaModel', 'HeModel'],
                        help="Name of deep learning model to train with, options are [ChenModel | LeeModel]")
     train.add_argument('-save_dir', type=str,
                        default='',
@@ -132,11 +132,12 @@ def remove_ignored_tasks(hyper_labels, options, metadata):
     hyper_labels_reg = torch.tensor([], dtype=hyper_labels.dtype)
     start = 0
     categorical = metadata['categorical'].copy()
+
+    valid_indices = np.array(options.ignored_cls_tasks)
+    valid_indices = valid_indices[valid_indices < len(metadata['cls_label_names'])]
+    metadata['cls_label_names'] = np.delete(metadata['cls_label_names'], valid_indices)
     for idx, (key, values) in enumerate(categorical.items()):
         n_classes = len(values)
-        valid_indices = options.ignored_cls_tasks
-        valid_indices = valid_indices[valid_indices < len(metadata['cls_label_names'])]
-        metadata['cls_label_names'] = np.delete(metadata['cls_label_names'], valid_indices)
         if idx not in options.ignored_cls_tasks:
             hyper_labels_cls = torch.cat((hyper_labels_cls, hyper_labels[:, :, start:(start + n_classes)]), 2)
         else:
@@ -144,11 +145,11 @@ def remove_ignored_tasks(hyper_labels, options, metadata):
             metadata['num_classes'] -= n_classes
         start += n_classes
 
+    valid_indices = np.array(options.ignored_reg_tasks)
+    valid_indices = valid_indices[valid_indices < len(metadata['reg_label_names'])]
+    metadata['reg_label_names'] = np.delete(metadata['reg_label_names'], valid_indices)
     for idx in range(start, hyper_labels.shape[-1]):
         true_idx = idx - start
-        valid_indices = options.ignored_reg_tasks
-        valid_indices = valid_indices[valid_indices < len(metadata['reg_label_names'])]
-        metadata['reg_label_names'] = np.delete(metadata['reg_label_names'], valid_indices)
         if true_idx not in options.ignored_reg_tasks:
             hyper_labels_reg = torch.cat((hyper_labels_reg, hyper_labels[:, :, idx:(idx+1)]), 2)
         else:
@@ -244,6 +245,10 @@ def main():
     elif model_name == 'PhamModel':
         model = PhamModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
         # loss_reg = nn.L1Loss()
+    elif model_name == 'SharmaModel':
+        model = SharmaModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size)
+    elif model_name == 'HeModel':
+        model = HeModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size)
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, out_cls, out_reg)
 
