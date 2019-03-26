@@ -252,6 +252,9 @@ def main():
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, out_cls, out_reg)
 
+    if options.gpu > -1 and torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model)
+
     # loss = nn.BCEWithLogitsLoss()
     # loss = nn.CrossEntropyLoss()
     # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
