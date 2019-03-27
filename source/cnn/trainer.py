@@ -246,14 +246,15 @@ class Trainer(object):
                 metric = val_loss
                 # metric = -val_avg_accuracy
 
-                if (e % self.save_every == 0 or e == 1 or e == self.options.epoch) and not self.options.no_classification:
+                if (e % self.save_every == 0 or e == 1 or e == self.options.epoch) \
+                        and not self.options.no_classification and self.visualizer:
                     for i in range(len(conf_matrices)):
                         self.visualizer.heatmap(conf_matrices[i], opts={
                             'title': '{} at epoch {}'.format(label_names[i], e),
                             'xmax': 100
                         })
 
-            if not self.options.no_classification:
+            if not self.options.no_classification and self.visualizer:
                 accuracy_list.append(accuracies.data.numpy())
                 accuracy_window = self.visualizer.line(
                     X=np.arange(start_epoch, e + 1, 1),
