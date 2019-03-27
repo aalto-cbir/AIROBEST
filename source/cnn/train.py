@@ -281,8 +281,8 @@ def main():
 
     print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
 
-    # if options.gpu > -1 and torch.cuda.device_count() > 1:
-    #     model = nn.DataParallel(model)
+    if options.gpu > -1 and torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model)
     modelTrain = ModelTrain(model, loss_cls_list, loss_reg, metadata, options)
 
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
@@ -295,15 +295,16 @@ def main():
         modelTrain.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
 
-    with torch.no_grad():
-        print('Model summary: ')
-        for input, _, _, _ in train_loader:
-            break
+    if not isinstance(model, nn.DataParallel):  # torch summary doesn't support multiple gpus
+        with torch.no_grad():
+            print('Model summary: ')
+            for input, _, _, _ in train_loader:
+                break
 
-        summary(modelTrain.model,
-                input.shape[1:],
-                batch_size=options.batch_size,
-                device=device.type)
+            summary(modelTrain.model,
+                    input.shape[1:],
+                    batch_size=options.batch_size,
+                    device=device.type)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     print(modelTrain)

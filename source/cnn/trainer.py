@@ -52,7 +52,7 @@ class Trainer(object):
         sum_loss = 0.0
         avg_losses = []
         val_losses = []
-        train_accuracies = torch.Tensor([0.0] * len(self.categorical))
+        train_accuracies = torch.tensor([0.0] * len(self.categorical))
         accuracy_list = []
 
         loss_window = None
@@ -131,8 +131,8 @@ class Trainer(object):
                     torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
                     # grad_norm_loss.backward()
                 else:
-                    grad_norm_loss = torch.Tensor([0.0], device=self.device)
-                    loss_ratio = torch.Tensor([0] * len(task_loss), device=self.device)
+                    grad_norm_loss = torch.tensor([0.0], device=self.device)
+                    loss_ratio = torch.tensor([0] * len(task_loss), device=self.device)
 
                 self.optimizer.step()
 
@@ -144,16 +144,10 @@ class Trainer(object):
                     avg_losses.append(np.mean(losses[-100:]))
 
                     # record
-                    if torch.cuda.is_available():
-                        task_losses.append(task_loss.data.cpu().numpy())
-                        loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
-                        weights.append(self.modelTrain.task_weights.data.cpu().numpy())
-                        grad_norm_losses.append(grad_norm_loss.data.cpu().numpy())
-                    else:
-                        task_losses.append(task_loss.data.numpy())
-                        loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
-                        weights.append(self.modelTrain.task_weights.data.numpy())
-                        grad_norm_losses.append(grad_norm_loss.data.numpy())
+                    task_losses.append(task_loss.data.cpu().numpy())
+                    loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
+                    weights.append(self.modelTrain.task_weights.data.cpu().numpy())
+                    grad_norm_losses.append(grad_norm_loss.data.cpu().numpy())
 
                     print('Step {:<7}: loss = {:.5f}, average loss = {:.5f}, task loss = {}, weights= {}'
                           .format(train_step,
@@ -211,14 +205,13 @@ class Trainer(object):
                 self.save_checkpoint(e, train_step, initial_task_loss)
             epoch_loss = epoch_loss / len(train_loader)
             if self.options.loss_balancing == 'grad_norm':
-                print(
-                    'Epoch {:<3}: Total loss={:.5f}, gradNorm_loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'.format(
-                        e,
-                        loss.item(),
-                        grad_norm_loss.data.cpu().numpy(),
-                        " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
-                        " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
-                        " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
+                print('Epoch {:<3}: Total loss={:.5f}, gradNorm_loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'
+                    .format(e,
+                            loss.item(),
+                            grad_norm_loss.data.cpu().numpy(),
+                            " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
+                            " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
+                            " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
                 )
 
             if not self.options.no_classification:
@@ -237,7 +230,7 @@ class Trainer(object):
             if val_loader is not None:
                 val_loss, val_avg_accuracy, val_accuracies, conf_matrices = self.validate(e, val_loader)
                 print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
-                      .format(val_loss, val_avg_accuracy.data.numpy(), val_accuracies.data.numpy()))
+                      .format(val_loss, val_avg_accuracy.data.cpu().numpy(), val_accuracies.data.cpu().numpy()))
                 val_losses.append(val_loss)
                 if not self.options.no_classification:
                     accuracies = torch.cat((accuracies, val_accuracies, val_avg_accuracy.view(1)))
@@ -255,7 +248,7 @@ class Trainer(object):
                         })
 
             if not self.options.no_classification and self.visualizer:
-                accuracy_list.append(accuracies.data.numpy())
+                accuracy_list.append(accuracies.data.cpu().numpy())
                 accuracy_window = self.visualizer.line(
                     X=np.arange(start_epoch, e + 1, 1),
                     Y=accuracy_list,
@@ -290,8 +283,8 @@ class Trainer(object):
         N_samples = len(val_loader.dataset)
         val_accuracies = torch.tensor([0.0] * len(self.categorical))  # treat all class uniformly
         avg_accuracy = torch.tensor(0.0)
-        pred_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
-        tgt_cls_indices = torch.tensor([], dtype=torch.long, device=self.device)
+        pred_cls_indices = torch.tensor([], dtype=torch.long)
+        tgt_cls_indices = torch.tensor([], dtype=torch.long)
         all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
         all_tgt_reg = torch.tensor([], dtype=torch.float)  # on cpu
         data_indices = torch.tensor([], dtype=torch.long)
@@ -311,6 +304,8 @@ class Trainer(object):
                 sum_loss += loss.item()
                 if not self.options.no_classification:
                     batch_accuracies, batch_pred_indices, batch_tgt_indices = self.compute_accuracy(batch_pred_cls, tgt_cls)
+                    # batch_pred_indices = batch_pred_indices.cpu()
+                    # batch_tgt_indices = batch_tgt_indices.cpu()
                     val_accuracies += batch_accuracies
                     # concat batch predictions
                     pred_cls_indices = torch.cat((pred_cls_indices, batch_pred_indices), dim=0)
@@ -407,13 +402,16 @@ class Trainer(object):
         # reshape tensor in (*, n_cls) format
         # this is mainly for LeeModel that output the prediction for all pixels
         # from the source image with shape (batch, patch, patch, n_cls)
+        predict = predict.cpu()
+        tgt = tgt.cpu()
+
         n_cls = tgt.shape[-1]
         predict = predict.view(-1, n_cls)
         tgt = tgt.view(-1, n_cls)
         #####
         pred_indices = []
         tgt_indices = []
-        n_correct = torch.Tensor([0.0] * len(self.categorical))
+        n_correct = torch.tensor([0.0] * len(self.categorical))
         num_classes = 0
         for idx, (key, values) in enumerate(self.categorical.items()):
             count = len(values)
