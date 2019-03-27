@@ -349,7 +349,7 @@ class Trainer(object):
         # scatter plot prediction vs target labels
         if not self.options.no_regression:
             if epoch % self.save_every == 0 or epoch == 1 or epoch == self.options.epoch:
-                n_reg = self.modelTrain.model.n_reg
+                n_reg = self.modelTrain.n_reg
                 coords = np.array(val_loader.dataset.coords)
 
                 cmap = plt.get_cmap('viridis')
