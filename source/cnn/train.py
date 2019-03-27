@@ -252,9 +252,6 @@ def main():
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, out_cls, out_reg)
 
-    if options.gpu > -1 and torch.cuda.device_count() > 1:
-        model = nn.DataParallel(model)
-
     # loss = nn.BCEWithLogitsLoss()
     # loss = nn.CrossEntropyLoss()
     # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
@@ -283,7 +280,11 @@ def main():
                             shuffle=True)
 
     print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
+
+    # if options.gpu > -1 and torch.cuda.device_count() > 1:
+    #     model = nn.DataParallel(model)
     modelTrain = ModelTrain(model, loss_cls_list, loss_reg, metadata, options)
+
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
     modelTrain = modelTrain.to(device)
     optimizer = optim.Adam(modelTrain.parameters(), lr=options.lr)

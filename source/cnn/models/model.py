@@ -582,15 +582,20 @@ class PhamModel(nn.Module):
 
         return pred_cls, pred_reg
 
+
 class ModelTrain(nn.Module):
     def __init__(self, model, criterion_cls_list, criterion_reg, metadata, options):
         super(ModelTrain, self).__init__()
         self.model = model
-        self.task_count = model.n_cls + model.n_reg
+        self.categorical = metadata['categorical']
+        self.regression = metadata['regression']
+        self.n_cls = len(self.categorical.keys())
+        self.n_reg = len(self.regression.keys())
+        self.task_count = self.n_cls + self.n_reg
         self.task_weights = torch.nn.Parameter(torch.tensor([1.0] * self.task_count).float())
         self.criterion_cls_list = criterion_cls_list
         self.criterion_reg = criterion_reg
-        self.categorical = metadata['categorical']
+
         self.options = options
 
     def forward(self, src, tgt_cls, tgt_reg):
@@ -606,7 +611,7 @@ class ModelTrain(nn.Module):
             target = torch.argmax(target, dim=1).long()
             criterion_cls = self.criterion_cls_list[idx]
 
-            if self.options.class_balancing == 'CRL' and self.model.training:
+            if self.options.class_balancing == 'CRL' and self.training:
                 single_loss = self.compute_objective_loss(src, target, prediction)
             else:
                 single_loss = criterion_cls(prediction, target)
@@ -614,7 +619,7 @@ class ModelTrain(nn.Module):
             task_loss.append(single_loss)
             start += n_classes
 
-        for idx in range(self.model.n_reg):
+        for idx in range(self.n_reg):
             prediction, target = pred_reg[:, idx], tgt_reg[:, idx]
             single_loss = self.criterion_reg(prediction, target)
             task_loss.append(single_loss)
@@ -622,7 +627,10 @@ class ModelTrain(nn.Module):
         return torch.stack(task_loss), pred_cls, pred_reg
 
     def get_last_shared_layer(self):
-        return self.model.get_last_shared_layer()
+        if isinstance(self.model, nn.DataParallel):
+            return self.model.module.get_last_shared_layer()
+        else:
+            return self.model.get_last_shared_layer()
 
     def get_anchors(self, target):
         """
