@@ -281,6 +281,19 @@ def main():
 
     print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
 
+    model = model.to(device)
+    # run model summary before converting model to DataParallel
+    # as torch summary doesn't work with torch 1.0.0
+    with torch.no_grad():
+        print('Model summary: ')
+        for input, _, _, _ in train_loader:
+            break
+
+        summary(model,
+                input.shape[1:],
+                batch_size=options.batch_size,
+                device=device.type)
+
     if options.gpu > -1 and torch.cuda.device_count() > 1:
         model = nn.DataParallel(model)
     modelTrain = ModelTrain(model, loss_cls_list, loss_reg, metadata, options)
@@ -295,18 +308,7 @@ def main():
         modelTrain.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
 
-    if not isinstance(model, nn.DataParallel):  # torch summary doesn't support multiple gpus
-        with torch.no_grad():
-            print('Model summary: ')
-            for input, _, _, _ in train_loader:
-                break
-
-            summary(modelTrain.model,
-                    input.shape[1:],
-                    batch_size=options.batch_size,
-                    device=device.type)
-
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7)
     print(modelTrain)
     print('Classification loss function:', loss_cls_list)
     print('Regression loss function:', loss_reg)

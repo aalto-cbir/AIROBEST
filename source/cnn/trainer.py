@@ -109,8 +109,8 @@ class Trainer(object):
 
                     norms = []
                     for i in range(len(task_loss)):
-                        gygw = torch.autograd.grad(task_loss[i], W.parameters(), retain_graph=True)
-                        norms.append(torch.norm(self.modelTrain.task_weights[i] * gygw[0]))
+                        gygw = torch.autograd.grad(task_loss[i], W.parameters(), retain_graph=True)[0]
+                        norms.append(torch.norm(self.modelTrain.task_weights[i] * gygw))
                     norms = torch.stack(norms)
 
                     loss_ratio = task_loss / initial_task_loss
@@ -122,14 +122,14 @@ class Trainer(object):
                     alpha = 0.16
                     # compute the GradNorm loss
                     # this term has to remain constant
-                    constant_term = torch.tensor(mean_norm * (inverse_train_rate ** alpha), requires_grad=False)
+                    constant_term = (mean_norm * (inverse_train_rate ** alpha)).requires_grad_(True)
 
-                    grad_norm_loss = torch.tensor(torch.sum(torch.abs(norms - constant_term)))
+                    grad_norm_loss = torch.sum(torch.abs(norms - constant_term)).requires_grad_(True)
 
                     # compute the gradient for the weights
-                    self.modelTrain.task_weights.grad = \
-                    torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
-                    # grad_norm_loss.backward()
+                    # self.modelTrain.task_weights.grad = \
+                    # torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
+                    grad_norm_loss.backward()
                 else:
                     grad_norm_loss = torch.tensor([0.0], device=self.device)
                     loss_ratio = torch.tensor([0] * len(task_loss), device=self.device)
@@ -228,7 +228,7 @@ class Trainer(object):
 
             metric = epoch_loss
             if val_loader is not None:
-                val_loss, val_avg_accuracy, val_accuracies, conf_matrices = self.validate(e, val_loader)
+                val_loss, val_avg_accuracy, val_accuracies, val_balanced_accuracies, conf_matrices = self.validate(e, val_loader)
                 print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
                       .format(val_loss, val_avg_accuracy.data.cpu().numpy(), val_accuracies.data.cpu().numpy()))
                 val_losses.append(val_loss)
@@ -236,8 +236,9 @@ class Trainer(object):
                     accuracies = torch.cat((accuracies, val_accuracies, val_avg_accuracy.view(1)))
                     accuracy_legend = accuracy_legend + ['val_{}'.format(i) for i in range(len(val_accuracies))]
                     accuracy_legend.append('val_avg')
-                metric = val_loss
+                # metric = val_loss
                 # metric = -val_avg_accuracy
+                metric = -np.mean(val_balanced_accuracies)
 
                 if (e % self.save_every == 0 or e == 1 or e == self.options.epoch) \
                         and not self.options.no_classification and self.visualizer:
@@ -389,7 +390,7 @@ class Trainer(object):
                     plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
                                                names[i], self.image_path, epoch)
 
-        return average_loss, avg_accuracy, val_accuracies, conf_matrices
+        return average_loss, avg_accuracy, val_accuracies, val_balanced_accuracies, conf_matrices
 
     def compute_accuracy(self, predict, tgt):
         """
