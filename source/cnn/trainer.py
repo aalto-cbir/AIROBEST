@@ -122,14 +122,14 @@ class Trainer(object):
                     alpha = 0.16
                     # compute the GradNorm loss
                     # this term has to remain constant
-                    constant_term = (mean_norm * (inverse_train_rate ** alpha)).requires_grad_(True)
+                    constant_term = (mean_norm * (inverse_train_rate ** alpha)).detach()
 
                     grad_norm_loss = torch.sum(torch.abs(norms - constant_term)).requires_grad_(True)
 
                     # compute the gradient for the weights
-                    # self.modelTrain.task_weights.grad = \
-                    # torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
-                    grad_norm_loss.backward()
+                    self.modelTrain.task_weights.grad = \
+                    torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
+                    # grad_norm_loss.backward()
                 else:
                     grad_norm_loss = torch.tensor([0.0], device=self.device)
                     loss_ratio = torch.tensor([0] * len(task_loss), device=self.device)

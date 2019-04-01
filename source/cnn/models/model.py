@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import init
 import torch.nn.functional as F
 import numpy as np
+from sklearn.metrics import f1_score
 
 
 class ChenModel(nn.Module):
@@ -408,16 +409,19 @@ class PhamModel3layers(nn.Module):
             init.constant_(m.bias, 0)
 
     def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
-        super(PhamModel, self).__init__()
+        super(PhamModel3layers, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
         self.patch_size = patch_size
 
-        self.conv1 = nn.Conv3d(1, n_planes, (32, 5, 5))
+        self.conv1 = nn.Conv3d(1, n_planes, (32, 4, 4))
+        self.conv1_bn = nn.BatchNorm3d(n_planes)
         self.pool1 = nn.MaxPool3d((1, 2, 2))
         self.conv2 = nn.Conv3d(n_planes, n_planes, (32, 5, 5))
+        self.conv2_bn = nn.BatchNorm3d(n_planes)
         self.pool2 = nn.MaxPool3d((1, 2, 2))
         self.conv3 = nn.Conv3d(n_planes, n_planes, (32, 4, 4))
+        self.conv3_bn = nn.BatchNorm3d(n_planes)
 
         self.features_size = self._get_final_flattened_size()
         print("Feature size:", self.features_size)
@@ -452,13 +456,13 @@ class PhamModel3layers(nn.Module):
         return self.fc_shared
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv1_bn(self.conv1(x)))
         x = self.pool1(x)
         x = self.dropout(x)
-        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv2_bn(self.conv2(x)))
         x = self.pool2(x)
         x = self.dropout(x)
-        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv3_bn(self.conv3(x)))
         x = self.dropout(x)
         x = x.view(-1, self.features_size)
         x = F.relu(self.fc_shared(x))
@@ -616,6 +620,12 @@ class ModelTrain(nn.Module):
             else:
                 single_loss = criterion_cls(prediction, target)
 
+            self_critic = True
+            if self_critic:
+                prediction_idx = torch.argmax(prediction, dim=1).long()
+                f1score = f1_score(prediction_idx.cpu(), target.cpu(), average='weighted')
+                f1score = torch.tensor(f1score, device=src.device)
+                single_loss = single_loss + (1 - f1score)
             task_loss.append(single_loss)
             start += n_classes
 
