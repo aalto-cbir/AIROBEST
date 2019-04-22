@@ -109,8 +109,8 @@ class Trainer(object):
 
                     norms = []
                     for i in range(len(task_loss)):
-                        gygw = torch.autograd.grad(task_loss[i], W.parameters(), retain_graph=True)[0]
-                        norms.append(torch.norm(self.modelTrain.task_weights[i] * gygw))
+                        gygw = torch.autograd.grad(task_loss[i], W.parameters(), retain_graph=True)
+                        norms.append(torch.norm(self.modelTrain.task_weights[i] * gygw[0]))
                     norms = torch.stack(norms)
 
                     loss_ratio = task_loss / initial_task_loss
@@ -122,13 +122,13 @@ class Trainer(object):
                     alpha = 0.16
                     # compute the GradNorm loss
                     # this term has to remain constant
-                    constant_term = (mean_norm * (inverse_train_rate ** alpha)).detach()
+                    constant_term = (mean_norm * (inverse_train_rate ** alpha))
 
-                    grad_norm_loss = torch.sum(torch.abs(norms - constant_term)).requires_grad_(True)
+                    grad_norm_loss = torch.sum(torch.abs(norms - constant_term))
 
                     # compute the gradient for the weights
                     self.modelTrain.task_weights.grad = \
-                    torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
+                        torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
                     # grad_norm_loss.backward()
                 else:
                     grad_norm_loss = torch.tensor([0.0], device=self.device)

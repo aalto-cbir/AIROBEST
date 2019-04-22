@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import visdom
 
 from models.model import ChenModel, LeeModel, PhamModel, SharmaModel, HeModel, ModelTrain, PhamModel3layers, \
-    PhamModel3layers2
+    PhamModel3layers2, PhamModel3layers3
 from input.utils import split_data, compute_data_distribution
 from input.data_loader import get_loader
 from trainer import Trainer
@@ -76,7 +76,7 @@ def parse_args():
                        help="Path to checkpoint to start training from.")
     train.add_argument('-model', type=str,
                        default='ChenModel', choices=['ChenModel', 'LeeModel', 'PhamModel', 'SharmaModel', 'HeModel',
-                                                     'PhamModel3layers', 'PhamModel3layers2'],
+                                                     'PhamModel3layers', 'PhamModel3layers2', 'PhamModel3layers3'],
                        help="Name of deep learning model to train with, options are [ChenModel | LeeModel]")
     train.add_argument('-save_dir', type=str,
                        default='',
@@ -243,7 +243,7 @@ def main():
             loss_cls_list.append(nn.CrossEntropyLoss())
 
     if model_name == 'ChenModel':
-        model = ChenModel(num_bands, out_cls, out_reg, patch_size=options.patch_size, n_planes=32)
+        model = ChenModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel':
         model = PhamModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
         # loss_reg = nn.L1Loss()
@@ -251,6 +251,8 @@ def main():
         model = PhamModel3layers(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers2':
         model = PhamModel3layers2(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+    elif model_name == 'PhamModel3layers3':
+        model = PhamModel3layers3(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'SharmaModel':
         model = SharmaModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size)
     elif model_name == 'HeModel':

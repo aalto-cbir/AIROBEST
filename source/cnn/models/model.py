@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.metrics import f1_score
 
 
-class ChenModel(nn.Module):
+class ChenModelOld(nn.Module):
     """
     DEEP FEATURE EXTRACTION AND CLASSIFICATION OF HYPERSPECTRAL IMAGES BASED ON CONVOLUTIONAL NEURAL NETWORKS
     Chen et al
@@ -71,6 +71,98 @@ class ChenModel(nn.Module):
         x_reg = self.fc_reg(x)
 
         return x_cls, x_reg
+
+
+class ChenModel(nn.Module):
+    """
+    DEEP FEATURE EXTRACTION AND CLASSIFICATION OF HYPERSPECTRAL IMAGES BASED ON CONVOLUTIONAL NEURAL NETWORKS
+    Chen et al
+    https://elib.dlr.de/106352/2/CNN.pdf
+    """
+
+    @staticmethod
+    def weight_init(m):
+        # In the beginning, the weights are randomly initialized
+        # with standard deviation 0.001
+        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
+            init.normal_(m.weight, std=0.01)
+            init.constant_(m.bias, 0)  # for 0.4.0 compatibility
+
+    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+        super(ChenModel, self).__init__()
+        self.input_channels = input_channels
+        self.n_planes = n_planes
+        self.patch_size = patch_size
+
+        self.conv1 = nn.Conv3d(1, n_planes, (32, 4, 4))
+        self.pool1 = nn.MaxPool3d((1, 2, 2))
+        self.conv2 = nn.Conv3d(n_planes, n_planes, (32, 5, 5))
+        self.pool2 = nn.MaxPool3d((1, 2, 2))
+        self.conv3 = nn.Conv3d(n_planes, n_planes, (32, 4, 4))
+
+        self.features_size = self._get_final_flattened_size()
+        print("Feature size:", self.features_size)
+        self.fc_shared = nn.Linear(self.features_size, 1024)
+
+        categorical = metadata['categorical']
+        self.n_cls = len(categorical.keys())
+        self.n_reg = out_reg
+        for idx, (key, values) in enumerate(categorical.items()):
+            setattr(self, 'fc_cls_{}_1'.format(idx), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_cls_{}_2'.format(idx), torch.nn.Linear(200, len(values)))
+
+        for i in range(out_reg):
+            setattr(self, 'fc_reg_{}_1'.format(i), torch.nn.Linear(1024, 200))
+            setattr(self, 'fc_reg_{}_2'.format(i), torch.nn.Linear(200, 1))
+
+        self.dropout = nn.Dropout(p=0.5)
+
+        self.apply(self.weight_init)
+
+    def _get_final_flattened_size(self):
+        with torch.no_grad():
+            x = torch.zeros((1, 1, self.input_channels,
+                             self.patch_size, self.patch_size))
+            x = self.pool1(self.conv1(x))
+            x = self.pool2(self.conv2(x))
+            x = self.conv3(x)
+            _, t, c, w, h = x.size()
+        return t * c * w * h
+
+    def get_last_shared_layer(self):
+        return self.fc_shared
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = self.pool1(x)
+        x = self.dropout(x)
+        x = F.relu(self.conv2(x))
+        x = self.pool2(x)
+        x = self.dropout(x)
+        x = F.relu(self.conv3(x))
+        x = self.dropout(x)
+        x = x.view(-1, self.features_size)
+        x = F.relu(self.fc_shared(x))
+
+        pred_cls = torch.tensor([], device=x.device)
+
+        # for classification task
+        for i in range(self.n_cls):
+            layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
+            x_cls = F.relu(layer1(x))
+            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
+
+        # for regression task
+        pred_reg = torch.tensor([], device=x.device)
+
+        for i in range(self.n_reg):
+            layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
+            x_reg = F.relu(layer1(x))
+            pred_reg = torch.cat((pred_reg, layer2(x_reg)), 1)
+
+        return pred_cls, pred_reg
 
 
 class LeeModel(nn.Module):
@@ -508,10 +600,10 @@ class PhamModel3layers2(nn.Module):
         self.n_planes = n_planes
         self.patch_size = patch_size
 
-        self.conv1 = nn.Conv3d(1, n_planes * 3, (48, 3, 3))
-        self.conv1_bn = nn.BatchNorm3d(n_planes * 3)
+        self.conv1 = nn.Conv3d(1, n_planes * 4, (48, 3, 3))
+        self.conv1_bn = nn.BatchNorm3d(n_planes * 4)
         self.pool1 = nn.MaxPool3d((1, 2, 2))
-        self.conv2 = nn.Conv3d(n_planes * 3, n_planes * 2, (32, 3, 3))
+        self.conv2 = nn.Conv3d(n_planes * 4, n_planes * 2, (32, 3, 3))
         self.conv2_bn = nn.BatchNorm3d(n_planes * 2)
         self.pool2 = nn.MaxPool3d((1, 2, 2))
         self.conv3 = nn.Conv3d(n_planes * 2, n_planes, (32, 3, 3))
@@ -531,6 +623,99 @@ class PhamModel3layers2(nn.Module):
         for i in range(out_reg):
             setattr(self, 'fc_reg_{}_1'.format(i), torch.nn.Linear(512, 200))
             setattr(self, 'fc_reg_{}_2'.format(i), torch.nn.Linear(200, 1))
+
+        self.dropout = nn.Dropout(p=0.5)
+
+        self.apply(self.weight_init)
+
+    def _get_final_flattened_size(self):
+        with torch.no_grad():
+            x = torch.zeros((1, 1, self.input_channels,
+                             self.patch_size, self.patch_size))
+            x = self.pool1(self.conv1(x))
+            x = self.pool2(self.conv2(x))
+            x = self.conv3(x)
+            _, t, c, w, h = x.size()
+        return t * c * w * h
+
+    def get_last_shared_layer(self):
+        return self.fc_shared
+
+    def forward(self, x):
+        x = F.relu(self.conv1_bn(self.conv1(x)))
+        x = self.pool1(x)
+        x = self.dropout(x)
+        x = F.relu(self.conv2_bn(self.conv2(x)))
+        x = self.pool2(x)
+        x = self.dropout(x)
+        x = F.relu(self.conv3_bn(self.conv3(x)))
+        x = self.dropout(x)
+        x = x.view(-1, self.features_size)
+        x = F.relu(self.fc_shared(x))
+
+        pred_cls = torch.tensor([], device=x.device)
+
+        # for classification task
+        for i in range(self.n_cls):
+            layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
+            x_cls = F.relu(layer1(x))
+            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
+            # pred_cls = torch.cat((pred_cls, layer2(x_cls)), 1)
+
+        # for regression task
+        pred_reg = torch.tensor([], device=x.device)
+
+        for i in range(self.n_reg):
+            layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
+            x_reg = F.relu(layer1(x))
+            pred_reg = torch.cat((pred_reg, layer2(x_reg)), 1)
+
+        return pred_cls, pred_reg
+
+
+class PhamModel3layers3(nn.Module):
+    """
+    CNN models for multi-task learning, inspired by Chen model
+    """
+
+    @staticmethod
+    def weight_init(m):
+        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
+            # init.xavier_normal_(m.weight)
+            init.normal_(m.weight, std=0.01)
+            init.constant_(m.bias, 0)
+
+    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+        super(PhamModel3layers3, self).__init__()
+        self.input_channels = input_channels
+        self.n_planes = n_planes
+        self.patch_size = patch_size
+
+        self.conv1 = nn.Conv3d(1, n_planes * 4, (48, 5, 5))
+        self.conv1_bn = nn.BatchNorm3d(n_planes * 4)
+        self.pool1 = nn.MaxPool3d((1, 2, 2), stride=1)
+        self.conv2 = nn.Conv3d(n_planes * 4, n_planes * 2, (32, 4, 4))
+        self.conv2_bn = nn.BatchNorm3d(n_planes * 2)
+        self.pool2 = nn.MaxPool3d((1, 2, 2), stride=1)
+        self.conv3 = nn.Conv3d(n_planes * 2, n_planes, (32, 4, 4))
+        self.conv3_bn = nn.BatchNorm3d(n_planes)
+
+        self.features_size = self._get_final_flattened_size()
+        print("Feature size:", self.features_size)
+        self.fc_shared = nn.Linear(self.features_size, 512)
+
+        categorical = metadata['categorical']
+        self.n_cls = len(categorical.keys())
+        self.n_reg = out_reg
+        for idx, (key, values) in enumerate(categorical.items()):
+            setattr(self, 'fc_cls_{}_1'.format(idx), torch.nn.Linear(512, 300))
+            setattr(self, 'fc_cls_{}_2'.format(idx), torch.nn.Linear(300, len(values)))
+
+        for i in range(out_reg):
+            setattr(self, 'fc_reg_{}_1'.format(i), torch.nn.Linear(512, 100))
+            setattr(self, 'fc_reg_{}_2'.format(i), torch.nn.Linear(100, 1))
 
         self.dropout = nn.Dropout(p=0.5)
 
