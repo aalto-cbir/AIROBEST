@@ -127,8 +127,7 @@ class Trainer(object):
                     grad_norm_loss = torch.sum(torch.abs(norms - constant_term))
 
                     # compute the gradient for the weights
-                    self.modelTrain.task_weights.grad = \
-                        torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
+                    self.modelTrain.task_weights.grad = torch.autograd.grad(grad_norm_loss, self.modelTrain.task_weights)[0]
                     # grad_norm_loss.backward()
                 else:
                     grad_norm_loss = torch.tensor([0.0], device=self.device)

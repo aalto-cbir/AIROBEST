@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import visdom
 
 from models.model import ChenModel, LeeModel, PhamModel, SharmaModel, HeModel, ModelTrain, PhamModel3layers, \
-    PhamModel3layers2, PhamModel3layers3
+    PhamModel3layers2, PhamModel3layers3, PhamModel3layers4, PhamModel3layers5, PhamModel3layers6, PhamModel3layers7
 from input.utils import split_data, compute_data_distribution
 from input.data_loader import get_loader
 from trainer import Trainer
@@ -76,7 +76,9 @@ def parse_args():
                        help="Path to checkpoint to start training from.")
     train.add_argument('-model', type=str,
                        default='ChenModel', choices=['ChenModel', 'LeeModel', 'PhamModel', 'SharmaModel', 'HeModel',
-                                                     'PhamModel3layers', 'PhamModel3layers2', 'PhamModel3layers3'],
+                                                     'PhamModel3layers', 'PhamModel3layers2', 'PhamModel3layers3',
+                                                     'PhamModel3layers4', 'PhamModel3layers5', 'PhamModel3layers6',
+                                                     'PhamModel3layers7'],
                        help="Name of deep learning model to train with, options are [ChenModel | LeeModel]")
     train.add_argument('-save_dir', type=str,
                        default='',
@@ -102,6 +104,9 @@ def parse_args():
     parser.add_argument('-ignored_reg_tasks', nargs='+',
                         required=False, default=[],
                         help='List of regression task indices to ignore, indexing starts from 0')
+    train.add_argument('-augmentation', type=str, choices=['flip', 'radiation_noise', 'mixture_noise'],
+                       default=None,
+                       help="Specify augmentation method")
 
     opt = parser.parse_args()
     opt.ignored_cls_tasks = list(map(int, opt.ignored_cls_tasks))
@@ -253,6 +258,14 @@ def main():
         model = PhamModel3layers2(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers3':
         model = PhamModel3layers3(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+    elif model_name == 'PhamModel3layers4':
+        model = PhamModel3layers4(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+    elif model_name == 'PhamModel3layers5':
+        model = PhamModel3layers5(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+    elif model_name == 'PhamModel3layers6':
+        model = PhamModel3layers6(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+    elif model_name == 'PhamModel3layers7':
+        model = PhamModel3layers7(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'SharmaModel':
         model = SharmaModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size)
     elif model_name == 'HeModel':
@@ -274,6 +287,7 @@ def main():
                               options.batch_size,
                               model_name=model_name,
                               is_3d_convolution=True,
+                              augmentation=options.augmentation,
                               patch_size=options.patch_size,
                               shuffle=True)
     val_loader = get_loader(hyper_image,
@@ -284,6 +298,7 @@ def main():
                             options.batch_size,
                             model_name=model_name,
                             is_3d_convolution=True,
+                            augmentation=None,
                             patch_size=options.patch_size,
                             shuffle=True)
 
@@ -308,7 +323,7 @@ def main():
 
     # do this before defining the optimizer:  https://pytorch.org/docs/master/optim.html#constructing-it
     modelTrain = modelTrain.to(device)
-    optimizer = optim.Adam(modelTrain.parameters(), lr=options.lr)
+    optimizer = optim.Adam(modelTrain.parameters(), lr=options.lr, weight_decay=0.0001)
 
     # End model construction
 
