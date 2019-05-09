@@ -13,7 +13,7 @@ class HypDataset(data.Dataset):
     """
 
     def __init__(self, hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name,
-                is_3d_convolution=False, augmentation=None):
+                 is_3d_convolution=False, augmentation=None):
         """
 
         :param hyper_image: hyperspectral image with shape WxHxC (C: number of channels)
@@ -60,11 +60,11 @@ class HypDataset(data.Dataset):
         return src
 
     @staticmethod
-    def radiation_noise(data, alpha_range=(0.9, 1.1), beta=1 / 25):
+    def radiation_noise(src, alpha_range=(0.9, 1.1), beta=1 / 25):
         alpha = np.random.uniform(*alpha_range)
         # noise = torch.fromnumpy(np.random.normal(loc=0., scale=1.0, size=data.shape))
-        noise = torch.normal(mean=0.0, std=torch.ones(data.shape))
-        return alpha * data + beta * noise
+        noise = torch.normal(mean=0.0, std=torch.ones(src.shape))
+        return alpha * src + beta * noise
 
     def mixture_noise(self, src, tgt_cls, tgt_reg, idx, beta=1 / 25):
         """
@@ -144,9 +144,9 @@ class HypDataset(data.Dataset):
         if self.augmentation == 'flip' and self.patch_size > 1:
             src = self.flip(src)
         elif self.augmentation == 'radiation_noise' and np.random.random() < 0.1:
-            src = self.radiation_noise(data)
+            src = self.radiation_noise(src)
         elif self.augmentation == 'mixture_noise' and np.random.random() < 0.2:
-            src = self.mixture_noise(data, tgt_cls, tgt_reg, idx)
+            src = self.mixture_noise(src, tgt_cls, tgt_reg, idx)
 
         # convert shape to pytorch image format: [channels x height x width]
         src = src.permute(2, 0, 1)
