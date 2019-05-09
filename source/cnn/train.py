@@ -236,7 +236,7 @@ def main():
     loss_reg = nn.MSELoss()
     loss_cls_list = []
 
-    if options.class_balancing == 'cost_sensitive':  # or options.class_balancing == 'CRL'
+    if options.class_balancing == 'cost_sensitive' or options.class_balancing == 'CRL':
         for i in range(len(categorical.keys())):
             loss_cls_list.append(nn.CrossEntropyLoss(weight=class_weights[i].to(device)))
     elif options.class_balancing == 'focal_loss':

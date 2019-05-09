@@ -1323,7 +1323,7 @@ class ModelTrain(nn.Module):
             criterion_cls = self.criterion_cls_list[idx]
 
             if self.options.class_balancing == 'CRL' and self.training:
-                single_loss = self.compute_objective_loss(src, target, prediction)
+                single_loss = self.compute_objective_loss(criterion_cls, src, target, prediction)
             else:
                 single_loss = criterion_cls(prediction, target)
 
@@ -1494,13 +1494,13 @@ class ModelTrain(nn.Module):
         omega_imb = (abs(percentage - np.mean(percentage)).sum() / len(percentage))
         return omega_imb
 
-    def compute_objective_loss(self, src, target, prediction):
+    def compute_objective_loss(self, criterion, src, target, prediction):
 
         eta = 0.01
         omega_imb = self.compute_omega(target)
         alpha = torch.tensor(eta * omega_imb, device=target.device)
 
-        criterion = nn.CrossEntropyLoss()
+        # criterion = nn.CrossEntropyLoss()
         entropy_loss = criterion(prediction, target)
 
         target_npy = target.data.cpu().detach().numpy()
