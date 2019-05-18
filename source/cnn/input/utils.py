@@ -256,6 +256,7 @@ def plot_pred_vs_target(x, y, color, name, save_path, epoch):
         g = g.plot_marginals(sns.distplot, kde=True, color=color)
     except Exception as e:
         print("Encountered error when plotting join plot. Error: " + str(e))
+        print("Predicted values: ", y)
         # g = g.plot_marginals(sns.distplot, kde=False, color=color)
 
     g = g.annotate(stats.pearsonr)

@@ -15,7 +15,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import visdom
 
 from models.model import ChenModel, LeeModel, PhamModel, SharmaModel, HeModel, ModelTrain, PhamModel3layers, \
-    PhamModel3layers2, PhamModel3layers3, PhamModel3layers4, PhamModel3layers5, PhamModel3layers6, PhamModel3layers7
+    PhamModel3layers2, PhamModel3layers3, PhamModel3layers4, PhamModel3layers5, PhamModel3layers6, PhamModel3layers7, \
+    PhamModel3layers8, PhamModel3layers9
 from input.utils import split_data, compute_data_distribution
 from input.data_loader import get_loader
 from trainer import Trainer
@@ -78,7 +79,7 @@ def parse_args():
                        default='ChenModel', choices=['ChenModel', 'LeeModel', 'PhamModel', 'SharmaModel', 'HeModel',
                                                      'PhamModel3layers', 'PhamModel3layers2', 'PhamModel3layers3',
                                                      'PhamModel3layers4', 'PhamModel3layers5', 'PhamModel3layers6',
-                                                     'PhamModel3layers7'],
+                                                     'PhamModel3layers7', 'PhamModel3layers8', 'PhamModel3layers9'],
                        help="Name of deep learning model to train with, options are [ChenModel | LeeModel]")
     train.add_argument('-save_dir', type=str,
                        default='',
@@ -91,7 +92,7 @@ def parse_args():
     train.add_argument('-visdom_server', type=str,
                        default='http://localhost',
                        help="Default visdom server")
-    train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights'],
+    train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights', 'uncertainty'],
                        default='grad_norm',
                        help="Specify loss balancing method for multi-task learning")
     train.add_argument('-class_balancing', type=str, choices=['cost_sensitive', 'focal_loss', 'CRL'],
@@ -233,7 +234,8 @@ def main():
     # Model construction
     model_name = options.model
 
-    loss_reg = nn.MSELoss()
+    reduction = 'sum' if options.loss_balancing == 'uncertainty' else 'mean'
+    loss_reg = nn.MSELoss(reduction=reduction)
     loss_cls_list = []
 
     if options.class_balancing == 'cost_sensitive' or options.class_balancing == 'CRL':
@@ -241,8 +243,8 @@ def main():
             loss_cls_list.append(nn.CrossEntropyLoss(weight=class_weights[i].to(device)))
     elif options.class_balancing == 'focal_loss':
         for i in range(len(categorical.keys())):
-            # loss_cls_list.append(FocalLoss(class_num=len(class_weights[i]), gamma=1))
-            loss_cls_list.append(FocalLoss(weight=class_weights[i].to(device)))
+            # loss_cls_list.append(FocalLoss(class_num=len(class_weights[i]), alpha=torch.tensor(class_weights[i]), gamma=2))
+            loss_cls_list.append(FocalLoss(balance_param=class_weights[i].to(device), weight=class_weights[i].to(device)))
     else:
         for i in range(len(categorical.keys())):
             loss_cls_list.append(nn.CrossEntropyLoss())
@@ -266,6 +268,10 @@ def main():
         model = PhamModel3layers6(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers7':
         model = PhamModel3layers7(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+    elif model_name == 'PhamModel3layers8':
+        model = PhamModel3layers8(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+    elif model_name == 'PhamModel3layers9':
+        model = PhamModel3layers9(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'SharmaModel':
         model = SharmaModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size)
     elif model_name == 'HeModel':
@@ -331,7 +337,8 @@ def main():
         modelTrain.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7)
+    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
     print(modelTrain)
     print('Classification loss function:', loss_cls_list)
     print('Regression loss function:', loss_reg)

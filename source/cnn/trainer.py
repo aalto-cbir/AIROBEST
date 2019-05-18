@@ -4,7 +4,8 @@ import sys
 import torch
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, roc_auc_score
 import matplotlib.pyplot as plt
 
 from input.utils import plot_largest_error_patches, plot_error_histogram, plot_pred_vs_target, \
@@ -37,6 +38,20 @@ class Trainer(object):
             os.makedirs(self.ckpt_path)
         if not os.path.exists(self.image_path):
             os.makedirs(self.image_path)
+
+    def compute_uncertainty_loss(self, task_loss):
+        """
+        Compute uncertainty loss
+        :param task_loss: a list contains loss for each task, classification loss first
+        :return: uncertainty loss
+        """
+        task_loss_cls = task_loss[:self.modelTrain.n_cls]
+        task_loss_reg = task_loss[-self.modelTrain.n_reg:]
+
+        cls_loss = torch.sum(torch.exp(-self.modelTrain.log_sigma_cls) * task_loss_cls + self.modelTrain.log_sigma_cls / 2)
+        reg_loss = torch.sum(0.5 * torch.exp(-self.modelTrain.log_sigma_reg) * task_loss_reg + self.modelTrain.log_sigma_reg / 2)
+
+        return cls_loss + reg_loss
 
     def train(self, train_loader, val_loader):
         epoch = self.options.epoch
@@ -82,8 +97,13 @@ class Trainer(object):
                 tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
 
                 task_loss, pred_cls, _ = self.modelTrain(src, tgt_cls, tgt_reg)
-                weighted_task_loss = self.modelTrain.task_weights * task_loss
-                loss = torch.sum(weighted_task_loss)
+
+                if self.options.loss_balancing == 'uncertainty':
+                    loss = self.compute_uncertainty_loss(task_loss)
+                    # loss = torch.sum(task_loss)
+                else:
+                    weighted_task_loss = self.modelTrain.task_weights * task_loss
+                    loss = torch.sum(weighted_task_loss)
 
                 if train_step == 0:
                     initial_task_loss = task_loss.data  # set L(0)
@@ -119,7 +139,7 @@ class Trainer(object):
                     # compute the mean norm \tilde{G}_w(t)
                     mean_norm = torch.mean(norms.data)
 
-                    alpha = 0.16
+                    alpha = 1.0
                     # compute the GradNorm loss
                     # this term has to remain constant
                     constant_term = (mean_norm * (inverse_train_rate ** alpha))
@@ -148,12 +168,16 @@ class Trainer(object):
                     weights.append(self.modelTrain.task_weights.data.cpu().numpy())
                     grad_norm_losses.append(grad_norm_loss.data.cpu().numpy())
 
-                    print('Step {:<7}: loss = {:.5f}, average loss = {:.5f}, task loss = {}, weights= {}'
+                    print('Step {:<7}: loss = {:.5f}, average loss = {:.5f}, task loss = {}, weights= {}, uncertainty '
+                          'logvar: cls= {}, reg= {} '
                           .format(train_step,
                                   loss.item(),
                                   avg_losses[-1],
                                   " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())),
-                                  " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy()))))
+                                  " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
+                                  " ".join(map("{:.5f}".format, self.modelTrain.log_sigma_cls.data.cpu().numpy())),
+                                  " ".join(map("{:.5f}".format, self.modelTrain.log_sigma_reg.data.cpu().numpy()))
+                                  ))
 
                     if self.visualizer is not None:
                         loss_window = self.visualizer.line(
@@ -274,6 +298,15 @@ class Trainer(object):
                     break
             print('Current learning rate at epoch {}: {}'.format(e, lr))
 
+    @staticmethod
+    def multiclass_roc_auc_score(y_true, y_pred, average="macro"):
+        lb = LabelBinarizer()
+
+        lb.fit(y_true)
+        y_true = lb.transform(y_true)
+        y_pred = lb.transform(y_pred)
+        return roc_auc_score(y_true, y_pred, average=average)
+
     def validate(self, epoch, val_loader):
         # set model in validation mode
         self.modelTrain.eval()
@@ -339,9 +372,11 @@ class Trainer(object):
                 precision = precision_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
                 recall = recall_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
                 f1 = f1_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+                auc_score = self.multiclass_roc_auc_score(tgt_cls_indices[:, i], pred_cls_indices[:, i])
                 print('Precision:', precision)
                 print('Recall:', recall)
                 print('F1 score', f1)
+                print('ROC-AUC score:', auc_score)
 
             avg_balanced_accuracy = np.around(np.mean(val_balanced_accuracies), decimals=2)
             print('Average balanced accuracy: %s, label accuracies: %s' % (avg_balanced_accuracy, val_balanced_accuracies))
