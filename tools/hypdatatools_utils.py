@@ -29,7 +29,7 @@ def readtextfile( filename, converttonumbers=True, localprintcommand=None ):
     
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'readtextfile(): ' # for messaging
     
     readxy=False 
@@ -83,7 +83,7 @@ def savehyperspectralfolders( localprintcommand=None ):
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'loadhyperspectralfolders(): ' # for messaging
     
     global hyperspectral_datafolder
@@ -102,7 +102,7 @@ def loadhyperspectralfolders( localprintcommand=None ):
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'loadhyperspectralfolders(): ' # for messaging
 
     global hyperspectral_datafolder

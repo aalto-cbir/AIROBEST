@@ -9,6 +9,7 @@ You should have received a copy of the GNU General Public License along with thi
 Rasterizes Finnish Forestry Center standwise data
 
 """
+# os.chdir( os.path.expanduser('~/python'))
 import numpy as np
 import spectral
 import spectral.io.envi as envi
@@ -20,18 +21,27 @@ import datetime
 # load the hyperspectral functions -- not yet a package
 #   add the folder with these functions to python path
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+# AIROBEST_dir = "../.." # path to AIROBEST folder
+AIROBEST_dir = 'hyperspectral\\AIROBEST'
+
+if not AIROBEST_dir in sys.path:
+    sys.path.append(AIROBEST_dir)
+# sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 from tools.hypdatatools_img import *
 from tools.hypdatatools_gdal import *
 import tools.borealallometry
 
-filenames_mv = [ "D:/mmattim/wrk/hyytiala-D/mv/MV_Juupajoki.gpkg", "D:/mmattim/wrk/hyytiala-D/mv/MV_Ruovesi.gpkg" ]
+filenames_mv = [ "MV_Juupajoki.gpkg", "MV_Ruovesi.gpkg" ]
+# datafolder_mv = "/homeappl/home/mottusma/data"
+datafolder_mv = "D:/mmattim/wrk/hyytiala-D/mv"
 
-datafolder = 'D:/mmattim/wrk/hyytiala-D/AISA2017'
+hypdatafolder = 'D:/mmattim/wrk/hyytiala-D/AISA2017'
+# hypdatafolder = '/homeappl/home/mottusma/project_deepsat/hyperspectral'
 hyperspectral_filename = '20170615_reflectance_mosaic_128b.hdr' 
 
 outfolder = 'D:/mmattim/wrk/hyytiala-D/temp'
+# outfolder = hypdatafolder
 filename_newraster = os.path.join( outfolder, "forestdata")
 
 # Fill in species-specific STAR and slw
@@ -50,19 +60,20 @@ for i in range( 1, 4 ):
 #   (the rasterized variables names area also printed out)
 
 fieldnames_in = [ 'standid', 'fertilityclass', 'soiltype' , 'developmentclass' ] 
-# maintreespecies in treestandsummary is not trustworthy -- it is often empty
+    # maintreespecies in treestandsummary is not trustworthy -- it is often empty
 
 
 outlist = [ [], [] ] + [ [] for i in fieldnames_in ] # geometries and other data from the standid table
 outlist_extra = [] # data combined from other data tables (list of lists)
 outlist_extranames = [] # names of the variables in outlist_extra
 
-for filename_mv in filenames_mv:
+for fi in filenames_mv:
+    filename_mv = os.path.join( datafolder_mv, fi ) 
     outlist_i = ( vector_getfeatures( filename_mv, fieldnames_in ) )
-    # outlist_i and outlist contain n+2 sublists: FID, geometries, standid, fertilityclass, etc (see fieldnames_in)
+    # outlist contains n+2 sublists: FID, geometries, standid, fertilityclass, etc
     geomlist_i = outlist_i[1]
     
-    filename_AISA = os.path.join(datafolder,hyperspectral_filename)
+    filename_AISA = os.path.join(hypdatafolder,hyperspectral_filename)
     i_stand = geometries_subsetbyraster( geomlist_i, filename_AISA, reproject=False )
         # reproject=False speeds up processing, otherwise each geometry would be individually reprojected prior to testing
     print("{:d} features (of total {:d}) found within raster {}".format( len(i_stand), len(geomlist_i), filename_AISA ) )
@@ -78,8 +89,6 @@ for filename_mv in filenames_mv:
     # open the data table and keep it open for a while
     conn = sqlite3.connect( filename_mv )
     c = conn.cursor()
-
-    listcounter = 0  # count how many elements are already in outlist_extra
     
     # -------  search for possible alterations in operations table
     # many of these are suggested operations with operationstate=0. (proposalyear, however, can be in the past) 
@@ -88,7 +97,10 @@ for filename_mv in filenames_mv:
     # some plots have more than one operation. Get the latest
     #  XXX Can we be sure that the last is the latest? it may be best to convert text to date and check explicitly XXX 
     operationdate_latest = [ i[-1][0] if len(i)>0 else None for i in q ]
-    if len(outlist_extra) < listcounter + 1:
+    
+    listcounter = 0 # count how many elements are already in outlist_extra
+    
+    if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( operationdate_latest )
         outlist_extranames.append( "operationdate_latest" )
     else:
@@ -101,7 +113,7 @@ for filename_mv in filenames_mv:
     q=geopackage_getspecificvalues1(c,"treestandsummary","basalarea",tsids_i,"treestandid")
     #unpack data from list
     basalarea = [ i[0][0] if len(i)>0 else 0 for i in q ]
-    if len(outlist_extra) < listcounter + 1:
+    if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( basalarea )
         outlist_extranames.append( "basalarea" )
     else:
@@ -119,7 +131,7 @@ for filename_mv in filenames_mv:
     # -------- stemcount from treestandsummary [integer]
     q=geopackage_getspecificvalues1(c,"treestandsummary","stemcount",tsids_i,"treestandid")
     stemcount = [ i[0][0] if len(i)>0 else 0 for i in q ]
-    if len(outlist_extra) < listcounter + 1:
+    if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( stemcount )
         outlist_extranames.append( "stemcount" )
     else:
@@ -128,7 +140,7 @@ for filename_mv in filenames_mv:
     # -------- meanheight from treestandsummary [float] 
     q=geopackage_getspecificvalues1(c,"treestandsummary","meanheight",tsids_i,"treestandid")
     meanheight = [ i[0][0] if len(i)>0 else 0 for i in q ]
-    if len(outlist_extra) < listcounter + 1:
+    if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( meanheight )
         outlist_extranames.append( "meanheight" )
     else:
@@ -138,7 +150,7 @@ for filename_mv in filenames_mv:
     q_basal=geopackage_getspecificvalues1(c,"treestratum","basalarea",tsids_i,"treestandid")
     # q_basal will also be used later
     N_strata = [ len(i) for i in q_basal ]
-    if len(outlist_extra) < listcounter + 1:
+    if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( N_strata )
         outlist_extranames.append( "N_strata" )
     else:
@@ -155,7 +167,6 @@ for filename_mv in filenames_mv:
     percentage_spruce = []
     percentage_broadleaf = []
     for areai,qi, q1i in zip( basalarea, q_basal, q_species ):
-        # WWW NOTE: areai is not used
         if len(qi) > 0:
             basalareas = [ i[0] for i in qi ]
             if sum( basalareas ) > 0:
@@ -273,7 +284,7 @@ for filename_mv in filenames_mv:
 
     conn.close()
 
-# exclude first three columns (FID, geometries, standid) from saving as raster
+# exclude first three colums (FID, geometries, standid) from saving as raster
 outfeatures = outlist[ 3: ] + outlist_extra 
 outnames = fieldnames_in[ 1: ] + outlist_extranames
 
@@ -283,15 +294,15 @@ for i,j in enumerate( outlist[0] ):
 
 # rasterize the data retrieved from forestry data
 
-mvdata = create_raster_like( filename_AISA, filename_newraster, Nlayers=len(outfeatures), outtype=3, interleave='bip',
+mvdata = create_raster_like( filename_AISA, filename_newraster , Nlayers=len(outfeatures), outtype=3, interleave='bip',
     force=True, description="Standlevel forest variable data from Metsakeskus geopackages" ) # outtypes 2=int, 3=long
 mvdata_map = mvdata.open_memmap( writable=True )
 
 # create a memory shapefile with standid and fertility data
-ii = 0
+ii = 0 # Note to self: unclear why ii is necessary, why not use i_zip?
 # loop over all data to be saved in the raster
 for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
-    # convert data into a integer-encodable format
+    # convert data inoto a integer-encodable format
     
     # create a memory shapefile with the field for rasterization
     data_converted = data

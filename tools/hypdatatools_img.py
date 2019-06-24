@@ -135,7 +135,7 @@ def plot_hyperspectral( hypfilename, hypdata=None, hypdata_map=None, outputcomma
     
     if outputcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        outputcommand = lambda x: print(x,end='')
+        outputcommand = lambda x: print(x,end='',flush=True)
     
     hypdata_map_shape = ",".join( map(str,hypdata_map.shape) )
     outputcommand( functionname + filename_short + " dimensions " + hypdata_map_shape+". \n") #shape[0]==lines, shape[1]==pixels, shape[2]==bands
@@ -147,9 +147,10 @@ def plot_hyperspectral( hypfilename, hypdata=None, hypdata_map=None, outputcomma
         if plotmode =='default':
             if 'default bands' in hyp_metadata:
                 if len( hyp_metadata['default bands'] ) > 2:
-                    i_r = int( hyp_metadata['default bands'][0] ) - 1
-                    i_g = int( hyp_metadata['default bands'][1] ) - 1
-                    i_b = int( hyp_metadata['default bands'][2] ) - 1
+                    i_r = int( float(hyp_metadata['default bands'][0]) ) - 1
+                    # note: direct conversion from string to int does not work if string contains decimals (e.g., '97.0')
+                    i_g = int( float(hyp_metadata['default bands'][1]) ) - 1
+                    i_b = int( float(hyp_metadata['default bands'][2]) ) - 1
                     # avoid official printing band names, they usually contain long crappy strings
                     outputcommand( functionname + filename_short + ": using default bands (%i,%i,%i) for plotting RGB. \n" % ( i_r, i_g, i_b) )
                 else:
@@ -300,7 +301,7 @@ def plot_singleband( hypfilename, hypdata=None, hypdata_map=None, bandnumber=Non
     
     if outputcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        outputcommand = lambda x: print(x,end='')
+        outputcommand = lambda x: print(x,end='',flush=True)
     
     hypdata_map_shape = ",".join( map(str,hypdata_map.shape) )
     outputcommand( "plot_singleband(): "+ filename_short + " dimensions " + hypdata_map_shape+". ") #shape[0]==lines, shape[1]==pixels, shape[2]==bands
@@ -473,7 +474,7 @@ def create_raster_like( envifile, outfilename, Nlayers = 1, outtype=4, interleav
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     
     functionname = "create_raster_like():"
     
@@ -549,7 +550,7 @@ def subset_raster( hypdata, outfilename, subset, hypdata_map=None, interleave=No
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     
     functionname = "subset_raster():"
     
@@ -648,7 +649,7 @@ def crop_raster( hypdata, outfilename, subset, hypdata_map=None, interleave=None
     
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
         
     if hypdata_map is None:
         hypdata_map = hypdata.open_memmap()
@@ -720,7 +721,7 @@ def figure2image( fig_hypdata, hypdata, hypdata_map, outfilename, interleave="bi
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     
     xlim = fig_hypdata.axes[0].get_xlim()
     ylim = fig_hypdata.axes[0].get_ylim()
@@ -890,7 +891,7 @@ def read_spectralsensitivity( spectralsensitivityfile, hyp_wl=None, localprintco
     
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'read_spectralsensitivity(): ' # for messaging
         
     # read the band sensitivity functions
@@ -965,7 +966,7 @@ def resample_hyperspectral( hyp_infile, spectralsensitivitymatrix, out_pixelsize
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'resample_hyperspectral(): ' # for messaging
     
     if hypdata is None:
@@ -1139,3 +1140,107 @@ def sentinel2_pixelsize():
     """
     #                 B1  B2  B3  B4  B5  B6  B7  B8  B8A B9  B10 B11 B12
     return np.array( (60, 10, 10, 10, 20, 20, 20, 10, 20, 60, 60, 20, 20) )
+
+def envihdr2datafile( hdrfilename, localprintcommand=None ):
+    """
+    try to locate the data file associated with the ENVI header file hdrfilename
+    because gdal wants the name of the data file, not hdr
+    out:
+        the full filename of the data file
+    """
+    if localprintcommand is None:
+        # use a print command with no line feed in the end. The line feeds are given manually when needed.
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'envihdr2datafile(): ' # for messaging
+    
+    # for envi files: gdal wants the name of the data file, not hdr
+    hdrfilename_split = os.path.splitext( hdrfilename )
+    
+    if hdrfilename_split[1] == ".hdr":
+        datafilename = hdrfilename_split[0]
+        if not os.path.exists(datafilename):
+            # try different extensions, .dat and .bin and .bil
+            basefilename = datafilename
+            datafilename += '.dat'
+            if not os.path.exists(datafilename):
+                datafilename  = basefilename + '.bin'
+                if not os.path.exists(datafilename):
+                    datafilename  = basefilename + '.bil'
+                    if not os.path.exists(datafilename):
+                        datafilename  = basefilename + '.bsq'
+                        if not os.path.exists(datafilename):
+                            localprintcommand(functionname + "Cannot find the data file corresponding to {}.\n".format(hdrfilename) )
+                            datafilename = ''
+    return datafilename
+    
+def envidata2hdrfile( envidatafilename, localprintcommand=None ):
+    """
+    try to locate the header file associated with the ENVI data file envidatafilename
+    because gdal wants the name of the data file, not hdr; but sometimes we need hdr.
+    out:
+        the full filename of the header file
+    """
+    if localprintcommand is None:
+        # use a print command with no line feed in the end. The line feeds are given manually when needed.
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'datafile2envihdr(): ' # for messaging
+    
+    # for envi files: gdal wants the name of the data file, not hdr
+    basefilename = os.path.splitext( envidatafilename )[0]
+    hdrfilename = basefilename + '.hdr'
+    if not os.path.exists(hdrfilename):
+        # try just adding hdr to datafile 
+        hdrfilename = envidatafilename + '.hdr'
+        if not os.path.exists(hdrfilename):
+            # no idea how to proceed
+            hdrfilename = ''
+            localprintcommand(functionname + "Cannot find the hdr file corresponding to {}.\n".format(envidatafilename) )
+    return hdrfilename
+
+def envifilecomponents( filename_in, localprintcommand=None ):
+    """
+    Tries to guess the envi data file and header file names from filename_in
+    filename_in is either data or header file
+    """
+    if localprintcommand is None:
+        # use a print command with no line feed in the end. The line feeds are given manually when needed.
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'envifilecomponents(): ' # for messaging
+    
+    base_in, extension_in = os.path.splitext( filename_in)
+    if  extension_in == ".hdr" or extension_in == ".HDR":
+        headerfile = filename_in
+        datafile = envihdr2datafile( headerfile, localprintcommand=localprintcommand  )
+    else:
+        # assume we were given the data file name
+        datafile = filename_in
+        headerfile = envidata2hdrfile( datafile, localprintcommand=localprintcommand )
+    return datafile, headerfile
+
+def envi_addheaderfield( envifilename, fieldname, values, checkifexists=True, localprintcommand=None ):
+    """
+    Adds a aline to ENVI header file. This function is in gdal-functions because it depends on envifilecomponents.
+    ENVI file should be closed before rewriting.
+    envifilename: string, file name
+    fieldname: name of the field to add
+    values: the value to add. Can be a list, e.g. one per band
+    checkifexists: flag -- whether to stop if the field already exists
+    """
+    
+    if localprintcommand is None:
+        # use a print command with no line feed in the end. The line feeds are given manually when needed.
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'envi_addheaderfield(): ' # for messaging
+
+    datafile,hdrfile = envifilecomponents( envifilename, localprintcommand=localprintcommand )
+    
+    if checkifexists and fieldname in open(hdrfile).read() :
+        localprintcommand( functionname +" field <{}> already exists in {}. Stopping.\n"
+            .format( fieldname, hdrfile ) )
+    else:
+        with open(hdrfile,'a') as hfile:
+            valuestr = [ str(i) for i in values ]
+            outstr = fieldname + " = {" + ", ".join(valuestr) + "}"
+            hfile.write( outstr )
+        localprintcommand( functionname +" Added field <{}> to {}.\n"
+            .format( fieldname, hdrfile ) )

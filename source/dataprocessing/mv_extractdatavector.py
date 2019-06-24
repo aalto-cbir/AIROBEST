@@ -22,9 +22,11 @@ import datetime
 # Pyzo needs these commands to be run from a file in this folder, otherwise it cannot find tools (??)
 import sys
 import importlib
-sys.path.append("C:\\Users\\MMATTIM\\OneDrive - Teknologian Tutkimuskeskus VTT\\koodid\\python\\hyperspectral\\AIROBEST")
+AIROBEST_dir = 'hyperspectral\\AIROBEST'
+if not AIROBEST_dir in sys.path:
+    sys.path.append(AIROBEST_dir)
+# sys.path.append("C:\\Users\\MMATTIM\\OneDrive - Teknologian Tutkimuskeskus VTT\\koodid\\python\\hyperspectral\\AIROBEST")
 from tools.hypdatatools_gdal import * 
-
 
 filenames_mv = [ "D:/mmattim/wrk/hyytiala-D/mv/MV_Juupajoki.gpkg", "D:/mmattim/wrk/hyytiala-D/mv/MV_Ruovesi.gpkg" ]
 
@@ -311,4 +313,10 @@ outfeatures = outlist[ 2: ] +[ outlist_extra[i] for i in range(len(outlist_extra
 outnames =  fieldnames_in + [ outlist_extranames[i] for i in range(len(outlist_extranames)) if i in i_extra]
 
 headerline = "\t".join(outnames)
-='\t', header=headerline )
+# formatline = ('%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e	%.18e')
+formatline = "%.i\t%i\t%i\t%3.1f\t%i"+ \
+    "\t%3.1f\t%3.1f\t%3.1f\t%i\t%3.1f" +\
+    "\t%3.1f\t%i\t%i\%3.1f\t%3.1f"+ \
+    "\t%3.1f"
+np.savetxt( filename_out, np.array(outfeatures).transpose(), fmt='%s', delimiter='\t', header=headerline )
+# actually, delimiter='\t' has no effect, delimiters are specified by formatline
