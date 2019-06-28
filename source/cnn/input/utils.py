@@ -1,16 +1,24 @@
 import os
+import sys
 
 import numpy as np
 from PIL import Image
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.preprocessing import LabelBinarizer
 import torch
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import string
 import scipy.stats as stats
 import seaborn as sns
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))))
+from tools.hypdatatools_img import get_geotrans
+
 sns.set(style="white", color_codes=True)
 
 
@@ -130,7 +138,7 @@ def get_patch(tensor, row, col, patch_size):
     return tensor[row1:(row2 + 1), col1:(col2 + 1)]
 
 
-def split_data(rows, cols, mask, patch_size, stride=1, mode='grid'):
+def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size, stride=1, mode='grid'):
     """
     Split dataset into train, test, val sets based on the coordinates
     of each pixel in the hyperspectral image
@@ -146,8 +154,10 @@ def split_data(rows, cols, mask, patch_size, stride=1, mode='grid'):
     """
     train = []
     val = []
+    test = []
     coords = []
     random_state = 797  # 646, 919, 390, 101
+    R, C, _ = mask.size()
     # random_state = np.random.randint(100, 1000)
     print('Random seed:', random_state)
     if mode == 'grid':
@@ -160,27 +170,66 @@ def split_data(rows, cols, mask, patch_size, stride=1, mode='grid'):
             patch = get_patch(mask, i, j, patch_size)
             if torch.min(patch) > 0:  # make sure there is no black pixels in the patch
                 if mode == 'random' or mode == 'grid':
-                    coords.append((i, j))
-                elif mode == 'split':
-                    if i <= val_row_start - patch_size // 2 or val_row_end + patch_size // 2 <= i:
-                        train.append((i, j))
-                    elif val_row_start <= i <= val_row_end:
-                        val.append((i, j))
+                    coords.append([i, j, 0, None, None])
+                # elif mode == 'split':
+                #     if i <= val_row_start - patch_size // 2 or val_row_end + patch_size // 2 <= i:
+                #         train.append((i, j))
+                #     elif val_row_start <= i <= val_row_end:
+                #         val.append((i, j))
 
     if mode == 'random' or mode == 'grid':
-        # train, test = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
-        # train, val = train_test_split(train, train_size=0.9, random_state=random_state, shuffle=True)
-        train, val = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
-    elif mode == 'split':
-        np.random.seed(random_state)
-        np.random.shuffle(train)
-        np.random.seed(random_state)
-        np.random.shuffle(val)
+        train, test = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
+        train, val = train_test_split(train, train_size=0.9, random_state=random_state, shuffle=True)
+        # train, val = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
+    # elif mode == 'split':
+    #     np.random.seed(random_state)
+    #     np.random.shuffle(train)
+    #     np.random.seed(random_state)
+    #     np.random.shuffle(val)
 
+    # augmentation = ['flip', 'radiation_noise', 'mixture_noise']
+    augmentation = []
+    new_data = []
+    # augmentation code: 1: flip horizontally, 2: flip vertically, 3:radiation, 4: mixture
+    if len(augmentation):
+        for sample in train:
+            r, c, _, _, _ = sample
+            for aug in augmentation:
+                if aug == 'flip':
+                    # code = 1 if np.random.random() > 0.5 else 2
+                    code = 1
+                    new_data.append([r, c, code, None, None])
+                elif aug == 'radiation_noise' and np.random.random() < 0.15:
+                    code = 3
+                    new_data.append([r, c, code, None, None])
+                elif aug == 'mixture_noise' and np.random.random() < 0.3:
+                    code = 4
+                    for trial in range(15):
+                        r_row, r_col = np.random.randint(-patch_size * 5, patch_size * 5, size=2)
+                        row2, col2 = r + r_row, c + r_col
+                        if not in_hypmap(C, R, col2, row2, patch_size):
+                            trial += 1
+                            continue
+                        patch = get_patch(mask, row2, col2, patch_size)
+                        if torch.min(patch) > 0:
+                            tgt_cls1 = hyper_labels_cls[r, c]
+                            tgt_cls2 = hyper_labels_cls[row2, col2]
+                            tgt_reg1 = hyper_labels_reg[r, c]
+                            tgt_reg2 = hyper_labels_reg[row2, col2]
+                            # if torch.all(torch.eq(tgt_cls1, tgt_cls2)) == 1 and torch.all(torch.eq(tgt_reg1, tgt_reg2)) == 1:
+                            if np.array_equal(tgt_cls1, tgt_cls2) and np.array_equal(tgt_reg1, tgt_reg2):
+                                new_data.append([r, c, code, row2, col2])
+                                break
+
+    train = train + new_data  # concat old and new data
+    np.random.seed(123)
+    np.random.shuffle(train)
+    train = np.array(train)
+    val = np.array(val)
     print('Number of training pixels: %d, val pixels: %d' % (len(train), len(val)))
     print('Train', train[0:10])
     print('Val', val[0:10])
-    return train, val
+    return train, test, val
 
 
 def resize_img(path, threshold):
@@ -432,7 +481,7 @@ def compute_data_distribution(labels, dataset, categorical):
         return []
     # TODO: make sure training and validation sets include all classes for each classification tasks
     data_labels = []  # labels of data points in the dataset
-    for (r, c) in dataset:
+    for (r, c, _, _, _) in dataset:
         data_labels.append(labels[r, c, :])
 
     data_labels = torch.stack(data_labels, dim=0)
@@ -466,3 +515,193 @@ def compute_data_distribution(labels, dataset, categorical):
             unique_count
         ))
     return weights
+
+
+def get_device(id):
+    device = torch.device('cpu')
+    if id > -1 and torch.cuda.is_available():
+        device = torch.device('cuda:{}'.format(id))
+    print("Number of GPUs available %i" % torch.cuda.device_count())
+    print("Training on device: %s" % device)
+    return device
+
+
+def compute_accuracy(predict, tgt, categorical):
+    """
+    Return number of correct prediction of each tgt label
+    :param predict: tensor of predicted outputs
+    :param tgt: tensor of ground truth labels
+    :return: number of correct predictions for every single classification task
+    """
+
+    # reshape tensor in (*, n_cls) format
+    # this is mainly for LeeModel that output the prediction for all pixels
+    # from the source image with shape (batch, patch, patch, n_cls)
+    predict = predict.cpu()
+    tgt = tgt.cpu()
+
+    n_cls = tgt.shape[-1]
+    predict = predict.view(-1, n_cls)
+    tgt = tgt.view(-1, n_cls)
+    #####
+    pred_indices = []
+    tgt_indices = []
+    n_correct = torch.tensor([0.0] * len(categorical))
+    num_classes = 0
+    print(categorical.items())
+    for idx, (key, values) in enumerate(categorical.items()):
+        count = len(values)
+        pred_class = predict[:, num_classes:(num_classes + count)]
+        tgt_class = tgt[:, num_classes:(num_classes + count)]
+        pred_index = pred_class.argmax(-1)  # get indices of max values in each row
+        tgt_index = tgt_class.argmax(-1)
+        pred_indices.append(pred_index)
+        tgt_indices.append(tgt_index)
+        true_positive = torch.sum(pred_index == tgt_index).item()
+        n_correct[idx] += true_positive
+        num_classes += count
+
+    pred_indices = torch.stack(pred_indices, dim=1)
+    tgt_indices = torch.stack(tgt_indices, dim=1)
+    return n_correct, pred_indices, tgt_indices
+
+
+def remove_ignored_tasks(hyper_labels, options, metadata):
+    hyper_labels_cls = torch.tensor([], dtype=hyper_labels.dtype)
+    hyper_labels_reg = torch.tensor([], dtype=hyper_labels.dtype)
+    start = 0
+    categorical = metadata['categorical'].copy()
+
+    valid_indices = np.array(options.ignored_cls_tasks)
+    valid_indices = valid_indices[valid_indices < len(metadata['cls_label_names'])]
+    metadata['cls_label_names'] = np.delete(metadata['cls_label_names'], valid_indices)
+    for idx, (key, values) in enumerate(categorical.items()):
+        n_classes = len(values)
+        if idx not in options.ignored_cls_tasks:
+            hyper_labels_cls = torch.cat((hyper_labels_cls, hyper_labels[:, :, start:(start + n_classes)]), 2)
+        else:
+            del metadata['categorical'][key]
+            metadata['num_classes'] -= n_classes
+        start += n_classes
+
+    valid_indices = np.array(options.ignored_reg_tasks)
+    valid_indices = valid_indices[valid_indices < len(metadata['reg_label_names'])]
+    metadata['reg_label_names'] = np.delete(metadata['reg_label_names'], valid_indices)
+    for idx in range(start, hyper_labels.shape[-1]):
+        true_idx = idx - start
+        if true_idx not in options.ignored_reg_tasks:
+            hyper_labels_reg = torch.cat((hyper_labels_reg, hyper_labels[:, :, idx:(idx + 1)]), 2)
+        else:
+            del metadata['regression'][true_idx]  # normal python dict
+
+    return hyper_labels_cls, hyper_labels_reg
+
+
+def multiclass_roc_auc_score(y_true, y_pred, average="macro"):
+    lb = LabelBinarizer()
+
+    lb.fit(y_true)
+    y_true = lb.transform(y_true)
+    y_pred = lb.transform(y_pred)
+    return roc_auc_score(y_true, y_pred, average=average)
+
+
+def compute_cls_metrics(pred_cls_indices, tgt_cls_indices, options, categorical, mode='validation'):
+    conf_matrices = []
+    balanced_accuracies = []
+    avg_accuracy = 0.0
+    if not options.no_classification:
+        val_accuracies, pred_cls_indices, tgt_cls_indices = compute_accuracy(pred_cls_indices, tgt_cls_indices, categorical)
+        avg_accuracy = torch.mean(val_accuracies)
+
+        print('--%s metrics--' % mode)
+        for i in range(tgt_cls_indices.shape[-1]):
+            conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
+            # convert to percentage along rows
+            conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
+            conf_matrix = np.around(100 * conf_matrix, decimals=2)
+            conf_matrices.append(conf_matrix)
+            label_accuracy = np.around(np.mean(conf_matrix.diagonal()), decimals=2)
+            balanced_accuracies.append(label_accuracy)
+            print('---Task %s---' % i)
+            precision = precision_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+            recall = recall_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+            f1 = f1_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
+            auc_score = multiclass_roc_auc_score(tgt_cls_indices[:, i], pred_cls_indices[:, i])
+            print('Precision:', precision)
+            print('Recall:', recall)
+            print('F1 score', f1)
+            print('ROC-AUC score:', auc_score)
+
+        avg_balanced_accuracy = np.around(np.mean(balanced_accuracies), decimals=2)
+        print('Average balanced accuracy: %s, label accuracies: %s' % (avg_balanced_accuracy, balanced_accuracies))
+        print('-------------')
+    return balanced_accuracies, avg_accuracy, conf_matrices
+
+
+def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, options, metadata, hyper_labels_reg, save_path,
+                        should_save, mode='validation'):
+    """
+    Compute related regression metrics
+    :param dataset_loader: data loader of the dataset (should be 'val_loader' or 'test_loader')
+    :param all_pred_reg: raw prediction of the whole data loader
+    :param all_tgt_reg: target values
+    :param epoch: epoch of the current model
+    :param options: 
+    :param metadata: 
+    :param hyper_labels_reg: 
+    :param save_path: 
+    :param should_save: 
+    :param mode: 
+    :return: 
+    """
+    N_samples = len(dataset_loader)
+    hypGt = get_geotrans(options.hyper_data_header)
+    if not options.no_regression:
+        absolute_errors = torch.abs(all_pred_reg - all_tgt_reg)
+        mae_error_per_task = torch.mean(absolute_errors, dim=0)
+        print('{} MAE={:.5f}, MAE per task={}'.format(
+            mode.capitalize(),
+            torch.mean(mae_error_per_task),
+            " ".join(map("{:.5f}".format, mae_error_per_task.data.cpu().numpy()))
+        ))
+        absolute_errors_all = torch.sum(absolute_errors, dim=1)
+
+        if should_save:
+            n_reg = all_pred_reg.shape[-1]
+            coords = np.array(dataset_loader.dataset.coords)
+
+            cmap = plt.get_cmap('viridis')
+            colors = [cmap(i) for i in np.linspace(0, 1, n_reg)]
+            names = metadata['reg_label_names']
+
+            plot_error_histogram(absolute_errors_all, 100, 'all_tasks', epoch, save_path)
+
+            k = N_samples // 10  # 10% of the largest error
+            value, indices = torch.topk(absolute_errors_all, k, dim=0, largest=True, sorted=False)
+
+            topk_points = coords[indices]
+            task_label = hyper_labels_reg[:, :, 0]
+            # chose the first task label just for visualization
+            plot_largest_error_patches(task_label, topk_points, dataset_loader.dataset.patch_size,
+                                       'all_tasks', save_path, epoch)
+
+            export_error_points(coords, absolute_errors, hypGt, absolute_errors_all, names, epoch, save_path)
+
+            for i in range(n_reg):
+                x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
+
+                plot_pred_vs_target(x, y, colors[i], names[i], save_path, epoch)
+
+                # plot error histogram
+                absolute_errors = torch.abs(x - y)
+                plot_error_histogram(absolute_errors, 100, names[i], epoch, save_path)
+
+                # plot top k largest errors on the map
+                task_label = hyper_labels_reg[:, :, i]
+                value, indices = torch.topk(absolute_errors, k, dim=0, largest=True, sorted=False)
+
+                topk_points = coords[indices]
+                plot_largest_error_patches(task_label, topk_points, dataset_loader.dataset.patch_size,
+                                           names[i], save_path, epoch)
+

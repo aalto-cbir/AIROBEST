@@ -88,7 +88,7 @@ class ChenModel(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)  # for 0.4.0 compatibility
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(ChenModel, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -276,7 +276,7 @@ class SharmaModel(nn.Module):
             # init.zeros_(m.bias)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=64):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=64):
         super(SharmaModel, self).__init__()
         self.input_channels = input_channels
         self.patch_size = patch_size
@@ -385,7 +385,7 @@ class HeModel(nn.Module):
             init.kaiming_uniform(m.weight)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=7):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=7):
         super(HeModel, self).__init__()
         self.input_channels = input_channels
         self.patch_size = patch_size
@@ -497,7 +497,7 @@ class PhamModel3layers(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -591,7 +591,7 @@ class PhamModel3layers2(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers2, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -684,7 +684,7 @@ class PhamModel3layers3(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers3, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -777,7 +777,7 @@ class PhamModel3layers4(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers4, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -880,7 +880,7 @@ class PhamModel3layers5(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers5, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -996,7 +996,7 @@ class PhamModel3layers6(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers6, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -1099,7 +1099,7 @@ class PhamModel3layers7(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers7, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -1203,7 +1203,7 @@ class PhamModel3layers8(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers8, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -1306,7 +1306,7 @@ class PhamModel3layers9(nn.Module):
             init.normal_(m.weight, std=0.01)
             init.constant_(m.bias, 0)
 
-    def __init__(self, input_channels, out_cls, out_reg, metadata, patch_size=27, n_planes=32):
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
         super(PhamModel3layers9, self).__init__()
         self.input_channels = input_channels
         self.n_planes = n_planes
@@ -1376,6 +1376,109 @@ class PhamModel3layers9(nn.Module):
         x = self.pool2(x)
         x = self.dropout(x)
         x = F.relu(self.conv3_bn(self.conv3(x)))
+        x = self.dropout(x)
+        x = x.view(-1, self.features_size)
+        x = F.relu(self.fc_shared(x))
+
+        pred_cls = torch.tensor([], device=x.device)
+
+        # for classification task
+        for i in range(self.n_cls):
+            layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
+            x_cls = F.relu(layer1(x))
+            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
+            # pred_cls = torch.cat((pred_cls, layer2(x_cls)), 1)
+
+        # for regression task
+        pred_reg = torch.tensor([], device=x.device)
+
+        for i in range(self.n_reg):
+            layer1 = getattr(self, 'fc_reg_{}_1'.format(i))
+            layer2 = getattr(self, 'fc_reg_{}_2'.format(i))
+            x_reg = F.relu(layer1(x))
+            pred_reg = torch.cat((pred_reg, layer2(x_reg)), 1)
+
+        return pred_cls, pred_reg
+
+
+class PhamModel3layers10(nn.Module):
+    """
+    CNN models for multi-task learning, inspired by Chen model
+    """
+
+    @staticmethod
+    def weight_init(m):
+        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
+            # init.xavier_normal_(m.weight)
+            init.normal_(m.weight, std=0.01)
+            init.constant_(m.bias, 0)
+
+    def __init__(self, input_channels, out_reg, metadata, patch_size=27, n_planes=32):
+        super(PhamModel3layers10, self).__init__()
+        self.input_channels = input_channels
+        self.n_planes = n_planes
+        self.patch_size = patch_size
+
+        self.conv1 = nn.Conv3d(1, n_planes * 4, (54, 4, 4))
+        self.conv1_bn = nn.BatchNorm3d(n_planes * 4)
+        self.pool1 = nn.MaxPool3d((1, 2, 2))
+        self.conv1_1 = nn.Conv3d(n_planes * 4, n_planes * 4, (1, 1, 1), padding=(0, 0, 0))
+        self.conv1_2 = nn.Conv3d(n_planes * 4, n_planes * 4, (3, 1, 1), padding=(1, 0, 0))
+        self.conv1_3 = nn.Conv3d(n_planes * 4, n_planes * 4, (5, 1, 1), padding=(2, 0, 0))
+        self.conv1_4 = nn.Conv3d(n_planes * 4, n_planes * 4, (11, 1, 1), padding=(5, 0, 0))
+        self.conv1_1_bn = nn.BatchNorm3d(n_planes * 4)
+        self.conv2 = nn.Conv3d(n_planes * 4, n_planes * 2, (32, 3, 3))
+        self.conv2_bn = nn.BatchNorm3d(n_planes * 2)
+        self.pool2 = nn.MaxPool3d((1, 2, 2))
+        self.conv3 = nn.Conv3d(n_planes * 2, n_planes, (32, 3, 3))
+        self.conv3_bn = nn.BatchNorm3d(n_planes)
+
+        self.features_size = self._get_final_flattened_size()
+        print("Feature size:", self.features_size)
+        self.fc_shared = nn.Linear(self.features_size, 512)
+
+        categorical = metadata['categorical']
+        self.n_cls = len(categorical.keys())
+        self.n_reg = out_reg
+        for idx, (key, values) in enumerate(categorical.items()):
+            setattr(self, 'fc_cls_{}_1'.format(idx), torch.nn.Linear(512, 300))
+            setattr(self, 'fc_cls_{}_2'.format(idx), torch.nn.Linear(300, len(values)))
+
+        for i in range(out_reg):
+            setattr(self, 'fc_reg_{}_1'.format(i), torch.nn.Linear(512, 300))
+            setattr(self, 'fc_reg_{}_2'.format(i), torch.nn.Linear(300, 1))
+
+        self.dropout = nn.Dropout(p=0.5)
+
+        self.apply(self.weight_init)
+
+    def _get_final_flattened_size(self):
+        with torch.no_grad():
+            x = torch.zeros((1, 1, self.input_channels,
+                             self.patch_size, self.patch_size))
+            x = self.pool1(self.conv1(x))
+            x = self.pool2(self.conv2(x))
+            x = self.conv3(x)
+            _, t, c, w, h = x.size()
+        return t * c * w * h
+
+    def get_last_shared_layer(self):
+        return self.fc_shared
+
+    def forward(self, x):
+        x = self.conv1_bn(F.relu(self.conv1(x)))
+        x = self.pool1(x)
+        x = self.dropout(x)
+        x1_1 = self.conv1_1(x)
+        x1_2 = self.conv1_2(x)
+        x1_3 = self.conv1_3(x)
+        x1_4 = self.conv1_4(x)
+        x = self.conv1_1_bn(F.relu(x1_1 + x1_2 + x1_3 + x1_4))
+        x = self.conv2_bn(F.relu(self.conv2(x)))
+        x = self.pool2(x)
+        x = self.dropout(x)
+        x = self.conv3_bn(F.relu(self.conv3(x)))
         x = self.dropout(x)
         x = x.view(-1, self.features_size)
         x = F.relu(self.fc_shared(x))
@@ -1515,7 +1618,7 @@ class ModelTrain(nn.Module):
         self.task_weights = nn.Parameter(torch.FloatTensor([1.0] * self.task_count))
         self.criterion_cls_list = criterion_cls_list
         self.criterion_reg = criterion_reg
-        self.log_sigma_reg = nn.Parameter(torch.FloatTensor([0.0] * self.n_reg))
+        self.log_sigma_reg = nn.Parameter(torch.FloatTensor([-0.69] * self.n_reg))
         self.log_sigma_cls = nn.Parameter(torch.FloatTensor([0.0] * self.n_cls))
 
         self.options = options

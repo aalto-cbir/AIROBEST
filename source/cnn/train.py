@@ -4,23 +4,24 @@
     Training
 """
 import argparse
+import os
 import sys
 
 import numpy as np
 import torch
-import torch.optim as optim
 import torch.nn as nn
-from torchsummary import summary
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+import torch.optim as optim
 import visdom
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torchsummary import summary
 
+from input.data_loader import get_loader
+from input.focal_loss import FocalLoss
+from input.utils import split_data, compute_data_distribution, remove_ignored_tasks, get_device
 from models.model import ChenModel, LeeModel, PhamModel, SharmaModel, HeModel, ModelTrain, PhamModel3layers, \
     PhamModel3layers2, PhamModel3layers3, PhamModel3layers4, PhamModel3layers5, PhamModel3layers6, PhamModel3layers7, \
-    PhamModel3layers8, PhamModel3layers9
-from input.utils import split_data, compute_data_distribution
-from input.data_loader import get_loader
+    PhamModel3layers8, PhamModel3layers9, PhamModel3layers10
 from trainer import Trainer
-from input.focal_loss import FocalLoss
 
 
 def parse_args():
@@ -55,6 +56,10 @@ def parse_args():
                         required=False, type=str,
                         default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data header')
+    parser.add_argument('-data_split_path',
+                        required=False, type=str,
+                        default='./data/mosaic/splits',
+                        help='Path to training and validation dataset')
     # Training options
     train = parser.add_argument_group('Training')
     train.add_argument('-epoch', type=int,
@@ -79,7 +84,8 @@ def parse_args():
                        default='ChenModel', choices=['ChenModel', 'LeeModel', 'PhamModel', 'SharmaModel', 'HeModel',
                                                      'PhamModel3layers', 'PhamModel3layers2', 'PhamModel3layers3',
                                                      'PhamModel3layers4', 'PhamModel3layers5', 'PhamModel3layers6',
-                                                     'PhamModel3layers7', 'PhamModel3layers8', 'PhamModel3layers9'],
+                                                     'PhamModel3layers7', 'PhamModel3layers8', 'PhamModel3layers9',
+                                                     'PhamModel3layers10'],
                        help="Name of deep learning model to train with, options are [ChenModel | LeeModel]")
     train.add_argument('-save_dir', type=str,
                        default='',
@@ -99,10 +105,10 @@ def parse_args():
                        default='cost_sensitive',
                        help="Specify method to handle class imbalance. Available options: "
                             "[cost sensitive | class rectification loss]")
-    parser.add_argument('-ignored_cls_tasks', nargs='+',
+    train.add_argument('-ignored_cls_tasks', nargs='+',
                         required=False, default=[],
                         help='List of classification task indices to ignore, indexing starts from 0')
-    parser.add_argument('-ignored_reg_tasks', nargs='+',
+    train.add_argument('-ignored_reg_tasks', nargs='+',
                         required=False, default=[],
                         help='List of regression task indices to ignore, indexing starts from 0')
     train.add_argument('-augmentation', type=str, choices=['flip', 'radiation_noise', 'mixture_noise'],
@@ -124,46 +130,6 @@ def get_input_data(metadata_path):
     metadata = torch.load(metadata_path)
 
     return metadata
-
-
-def get_device(id):
-    device = torch.device('cpu')
-    if id > -1 and torch.cuda.is_available():
-        device = torch.device('cuda:{}'.format(id))
-    print("Number of GPUs available %i" % torch.cuda.device_count())
-    print("Training on device: %s" % device)
-    return device
-
-
-def remove_ignored_tasks(hyper_labels, options, metadata):
-    hyper_labels_cls = torch.tensor([], dtype=hyper_labels.dtype)
-    hyper_labels_reg = torch.tensor([], dtype=hyper_labels.dtype)
-    start = 0
-    categorical = metadata['categorical'].copy()
-
-    valid_indices = np.array(options.ignored_cls_tasks)
-    valid_indices = valid_indices[valid_indices < len(metadata['cls_label_names'])]
-    metadata['cls_label_names'] = np.delete(metadata['cls_label_names'], valid_indices)
-    for idx, (key, values) in enumerate(categorical.items()):
-        n_classes = len(values)
-        if idx not in options.ignored_cls_tasks:
-            hyper_labels_cls = torch.cat((hyper_labels_cls, hyper_labels[:, :, start:(start + n_classes)]), 2)
-        else:
-            del metadata['categorical'][key]
-            metadata['num_classes'] -= n_classes
-        start += n_classes
-
-    valid_indices = np.array(options.ignored_reg_tasks)
-    valid_indices = valid_indices[valid_indices < len(metadata['reg_label_names'])]
-    metadata['reg_label_names'] = np.delete(metadata['reg_label_names'], valid_indices)
-    for idx in range(start, hyper_labels.shape[-1]):
-        true_idx = idx - start
-        if true_idx not in options.ignored_reg_tasks:
-            hyper_labels_reg = torch.cat((hyper_labels_reg, hyper_labels[:, :, idx:(idx+1)]), 2)
-        else:
-            del metadata['regression'][true_idx]  # normal python dict
-
-    return hyper_labels_cls, hyper_labels_reg
 
 
 def main():
@@ -224,7 +190,17 @@ def main():
 
     R, C, num_bands = hyper_image.shape
 
-    train_set, val_set = split_data(R, C, mask, options.patch_size, options.patch_stride)
+    if os.path.isfile(options.data_split_path + '/train_set.npy') and os.path.isfile(options.data_split_path + '/val_set.npy'):
+        print('Loading data split...')
+        train_set = np.load(options.data_split_path + '/train_set.npy')
+        val_set = np.load(options.data_split_path + '/val_set.npy')
+    else:
+        train_set, test_set, val_set = split_data(R, C, mask, hyper_labels_cls, hyper_labels_reg, options.patch_size, options.patch_stride)
+        if not os.path.exists(options.data_split_path):
+            os.makedirs(options.data_split_path)
+        np.save(options.data_split_path + '/train_set.npy', train_set)
+        np.save(options.data_split_path + '/val_set.npy', val_set)
+        np.save(options.data_split_path + '/test_set.npy', test_set)
 
     print('Data distribution on training set')
     class_weights = compute_data_distribution(hyper_labels_cls, train_set, categorical)
@@ -236,6 +212,7 @@ def main():
 
     reduction = 'sum' if options.loss_balancing == 'uncertainty' else 'mean'
     loss_reg = nn.MSELoss(reduction=reduction)
+    # loss_reg = nn.MSELoss()
     loss_cls_list = []
 
     if options.class_balancing == 'cost_sensitive' or options.class_balancing == 'CRL':
@@ -250,38 +227,36 @@ def main():
             loss_cls_list.append(nn.CrossEntropyLoss())
 
     if model_name == 'ChenModel':
-        model = ChenModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = ChenModel(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel':
-        model = PhamModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
         # loss_reg = nn.L1Loss()
     elif model_name == 'PhamModel3layers':
-        model = PhamModel3layers(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers2':
-        model = PhamModel3layers2(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers2(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers3':
-        model = PhamModel3layers3(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers3(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers4':
-        model = PhamModel3layers4(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers4(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers5':
-        model = PhamModel3layers5(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers5(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers6':
-        model = PhamModel3layers6(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers6(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers7':
-        model = PhamModel3layers7(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers7(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers8':
-        model = PhamModel3layers8(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers8(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'PhamModel3layers9':
-        model = PhamModel3layers9(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+        model = PhamModel3layers9(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
+    elif model_name == 'PhamModel3layers10':
+        model = PhamModel3layers10(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
     elif model_name == 'SharmaModel':
-        model = SharmaModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size)
+        model = SharmaModel(num_bands, out_reg, metadata, patch_size=options.patch_size)
     elif model_name == 'HeModel':
-        model = HeModel(num_bands, out_cls, out_reg, metadata, patch_size=options.patch_size)
+        model = HeModel(num_bands, out_reg, metadata, patch_size=options.patch_size)
     elif model_name == 'LeeModel':
         model = LeeModel(num_bands, out_cls, out_reg)
-
-    # loss = nn.BCEWithLogitsLoss()
-    # loss = nn.CrossEntropyLoss()
-    # loss = nn.MultiLabelSoftMarginLoss(size_average=True)
 
     multiplier = None if options.input_normalize_method == 'minmax_scaling' else norm_inv
 
@@ -337,8 +312,8 @@ def main():
         modelTrain.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
 
-    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=6)
+    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
     print(modelTrain)
     print('Classification loss function:', loss_cls_list)
     print('Regression loss function:', loss_reg)

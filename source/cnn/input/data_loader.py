@@ -66,7 +66,13 @@ class HypDataset(data.Dataset):
         noise = torch.normal(mean=0.0, std=torch.ones(src.shape))
         return alpha * src + beta * noise
 
-    def mixture_noise(self, src, tgt_cls, tgt_reg, idx, beta=1 / 25):
+    @staticmethod
+    def mixture_noise(src1, src2, beta=1 / 25):
+        alpha1, alpha2 = np.random.uniform(0.01, 1., size=2)
+        noise = torch.normal(mean=0.0, std=torch.ones(src1.shape))
+        return (alpha1 * src1 + alpha2 * src2) / (alpha1 + alpha2) + beta * noise
+
+    def mixture_noise_deprecated(self, src, tgt_cls, tgt_reg, idx, beta=1 / 25):
         """
         Does not consider labels whose tensor rank !== 1
         :param src:
@@ -111,7 +117,7 @@ class HypDataset(data.Dataset):
         return (alpha1 * src + alpha2 * src2) / (alpha1 + alpha2) + beta * noise
 
     def __getitem__(self, idx):
-        row, col = self.coords[idx]
+        row, col, aug_code, row2, col2 = self.coords[idx]
 
         src = get_patch(self.hyper_image, row, col, self.patch_size).float()
         if self.multiplier is not None:
@@ -140,13 +146,29 @@ class HypDataset(data.Dataset):
                 tgt_reg = float('inf')
             else:
                 tgt_reg = self.hyper_labels_reg[row, col]  # use labels of center pixel
-
+        """
         if self.augmentation == 'flip' and self.patch_size > 1:
             src = self.flip(src)
         elif self.augmentation == 'radiation_noise' and np.random.random() < 0.1:
             src = self.radiation_noise(src)
         elif self.augmentation == 'mixture_noise' and np.random.random() < 0.2:
             src = self.mixture_noise(src, tgt_cls, tgt_reg, idx)
+        """
+        if aug_code == 1:
+            src = torch.flip(src, [0])
+        elif aug_code == 2:
+            src = torch.flip(src, [1])
+        elif aug_code == 3:
+            src = self.radiation_noise(src)
+        elif aug_code == 4:
+            src2 = get_patch(self.hyper_image, row2, col2, self.patch_size).float()
+            if self.multiplier is not None:
+                src_norm_inv = get_patch(self.multiplier, row2, col2, self.patch_size)
+                src_norm_inv = torch.unsqueeze(src_norm_inv, -1)
+                src2 = src2 * src_norm_inv
+            else:
+                src2 = (src2 - self.img_min) / (self.img_max - self.img_min)
+            src = self.mixture_noise(src, src2)
 
         # convert shape to pytorch image format: [channels x height x width]
         src = src.permute(2, 0, 1)

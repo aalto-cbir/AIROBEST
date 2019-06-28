@@ -33,3 +33,10 @@ Training configurations:
 For other options, run: `python train.py -h` for detailed explanation.
 
 Visualization can be seen by opening [http://localhost:8097/](http://localhost:8097/) from web browser. You first need to login on Taito with local forwarding: `ssh -L 8097:127.0.0.1:8097 username@taito-gpu.csc.fi`
+
+#### Project structure
+- `preprocess.py`: processes and prepares the data for neural network training.
+- `train.py`: constructs and builds the CNN models which are defined in `models/model.py`
+- `input` folder: contains the implementations of `data loader`, `utility` functions, and `focal loss` function 
+- `inference.py`: runs the inference on test data
+- `tools` folder: includes code for working with hyperspectral data
