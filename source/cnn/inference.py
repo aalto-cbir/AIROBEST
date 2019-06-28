@@ -58,7 +58,7 @@ def infer(model, test_loader, device, options, metadata, hyper_labels_reg):
                 all_tgt_reg = torch.cat((all_tgt_reg, tgt_reg), dim=0)
                 all_pred_reg = torch.cat((all_pred_reg, batch_pred_reg), dim=0)
 
-    balanced_accuracies, avg_accuracy, conf_matrices = compute_cls_metrics(pred_cls_logits, tgt_cls_logits, options,
+    balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices = compute_cls_metrics(pred_cls_logits, tgt_cls_logits, options,
                                                                            categorical)
     save_dir = options.save_dir
     if not os.path.exists(save_dir):

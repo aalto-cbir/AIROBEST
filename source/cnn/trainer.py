@@ -261,7 +261,7 @@ class Trainer(object):
 
             metric = epoch_loss
             if val_loader is not None:
-                val_loss, val_avg_accuracy, val_accuracies, val_balanced_accuracies, conf_matrices \
+                val_loss, val_balanced_accuracies, val_avg_accuracy, val_accuracies, conf_matrices \
                     = self.validate(e, val_loader)
                 print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
                       .format(val_loss, val_avg_accuracy.data.cpu().numpy(), val_accuracies.data.cpu().numpy()))
@@ -308,6 +308,7 @@ class Trainer(object):
                     lr = param_group['lr']
                     break
             print('Current learning rate at epoch {}: {}'.format(e, lr))
+            print('===============================================')
 
     @staticmethod
     def multiclass_roc_auc_score(y_true, y_pred, average="macro"):
@@ -357,13 +358,13 @@ class Trainer(object):
 
         average_loss = sum_loss / len(val_loader)
 
-        val_balanced_accuracies, avg_accuracy, conf_matrices = compute_cls_metrics(pred_cls_logits, tgt_cls_logits,
+        val_balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices = compute_cls_metrics(pred_cls_logits, tgt_cls_logits,
                                                                                    self.options,
                                                                                    self.categorical)
 
         compute_reg_metrics(val_loader, all_pred_reg, all_tgt_reg, epoch, self.options, self.metadata,
                             self.hyper_labels_reg, self.image_path, should_save=True, mode='validation')
-        return average_loss, avg_accuracy, val_accuracies, val_balanced_accuracies, conf_matrices
+        return average_loss, val_balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices
 
     def save_checkpoint(self, epoch, train_step, initial_task_loss):
         """

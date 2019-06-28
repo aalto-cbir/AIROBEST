@@ -548,7 +548,6 @@ def compute_accuracy(predict, tgt, categorical):
     tgt_indices = []
     n_correct = torch.tensor([0.0] * len(categorical))
     num_classes = 0
-    print(categorical.items())
     for idx, (key, values) in enumerate(categorical.items()):
         count = len(values)
         pred_class = predict[:, num_classes:(num_classes + count)]
@@ -609,12 +608,14 @@ def multiclass_roc_auc_score(y_true, y_pred, average="macro"):
 def compute_cls_metrics(pred_cls_indices, tgt_cls_indices, options, categorical, mode='validation'):
     conf_matrices = []
     balanced_accuracies = []
+    task_accuracies = []
     avg_accuracy = 0.0
     if not options.no_classification:
-        val_accuracies, pred_cls_indices, tgt_cls_indices = compute_accuracy(pred_cls_indices, tgt_cls_indices, categorical)
-        avg_accuracy = torch.mean(val_accuracies)
+        task_accuracies, pred_cls_indices, tgt_cls_indices = compute_accuracy(pred_cls_indices, tgt_cls_indices, categorical)
+        task_accuracies = task_accuracies * 100 / len(tgt_cls_indices)
+        avg_accuracy = torch.mean(task_accuracies)
 
-        print('--%s metrics--' % mode)
+        print('--%s metrics--' % mode.capitalize())
         for i in range(tgt_cls_indices.shape[-1]):
             conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
             # convert to percentage along rows
@@ -634,9 +635,10 @@ def compute_cls_metrics(pred_cls_indices, tgt_cls_indices, options, categorical,
             print('ROC-AUC score:', auc_score)
 
         avg_balanced_accuracy = np.around(np.mean(balanced_accuracies), decimals=2)
-        print('Average balanced accuracy: %s, label accuracies: %s' % (avg_balanced_accuracy, balanced_accuracies))
+        print('Average balanced accuracy=%s, task balanced accuracies=%s'
+              % (avg_balanced_accuracy, balanced_accuracies))
         print('-------------')
-    return balanced_accuracies, avg_accuracy, conf_matrices
+    return balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices
 
 
 def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, options, metadata, hyper_labels_reg, save_path,
