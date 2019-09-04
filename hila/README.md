@@ -20,4 +20,4 @@
 
    List of stands that will be collected, when using AISA data from 2017.
 
-   Path to this file has to be defined in inputs.py
+   Path to this file has to be defined in *inputs.py*
