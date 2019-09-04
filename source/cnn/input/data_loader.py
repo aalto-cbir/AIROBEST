@@ -11,7 +11,7 @@ class HypDataset(data.Dataset):
     - {train/test/val}.npy: contain pixel coordinates for each train/test/val set
     """
 
-    def __init__(self, hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name,
+    def __init__(self, hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, patch_size, model_name,
                  is_3d_convolution=False):
         """
 
@@ -22,7 +22,9 @@ class HypDataset(data.Dataset):
         :param hyperparams:
         """
         self.hyper_image = hyper_image
-        self.norm_inv = norm_inv
+        self.multiplier = multiplier
+        self.img_min, self.img_max = torch.min(hyper_image).float(), torch.max(hyper_image).float()
+        print('Max pixel %s, min pixel: %s' % (self.img_max, self.img_min))
         self.hyper_labels_cls = hyper_labels_cls
         self.hyper_labels_reg = hyper_labels_reg
         self.patch_size = patch_size
@@ -44,17 +46,32 @@ class HypDataset(data.Dataset):
         row, col = self.coords[idx]
 
         src = get_patch(self.hyper_image, row, col, self.patch_size).float()
-        src_norm_inv = get_patch(self.norm_inv, row, col, self.patch_size)
-        src_norm_inv = torch.unsqueeze(src_norm_inv, -1)
-        src = src * src_norm_inv
-        if self.model_name == 'LeeModel':
-            tgt_cls = get_patch(self.hyper_labels_cls, row, col, self.patch_size)
-            tgt_cls = tgt_cls.permute(2, 0, 1)
-            tgt_reg = get_patch(self.hyper_labels_reg, row, col, self.patch_size)
-            tgt_reg = tgt_reg.permute(2, 0, 1)
+        if self.multiplier is not None:
+            src_norm_inv = get_patch(self.multiplier, row, col, self.patch_size)
+            src_norm_inv = torch.unsqueeze(src_norm_inv, -1)
+            src = src * src_norm_inv
         else:
-            tgt_cls = self.hyper_labels_cls[row, col]  # use labels of center pixel
-            tgt_reg = self.hyper_labels_reg[row, col]  # use labels of center pixel
+            src = (src - self.img_min) / (self.img_max - self.img_min)
+        if self.model_name == 'LeeModel':
+            if self.hyper_labels_cls.nelement() == 0:
+                tgt_cls = float('inf')
+            else:
+                tgt_cls = get_patch(self.hyper_labels_cls, row, col, self.patch_size)
+                tgt_cls = tgt_cls.permute(2, 0, 1)
+            if self.hyper_labels_reg.nelement() == 0:
+                tgt_reg = float('inf')
+            else:
+                tgt_reg = get_patch(self.hyper_labels_reg, row, col, self.patch_size)
+                tgt_reg = tgt_reg.permute(2, 0, 1)
+        else:
+            if self.hyper_labels_cls.nelement() == 0:
+                tgt_cls = float('inf')
+            else:
+                tgt_cls = self.hyper_labels_cls[row, col]  # use labels of center pixel
+            if self.hyper_labels_reg.nelement() == 0:
+                tgt_reg = float('inf')
+            else:
+                tgt_reg = self.hyper_labels_reg[row, col]  # use labels of center pixel
 
         # convert shape to pytorch image format: [channels x height x width]
         src = src.permute(2, 0, 1)
@@ -62,15 +79,15 @@ class HypDataset(data.Dataset):
         # Transform to 4D tensor for 3D convolution
         if self.is_3d_convolution and self.patch_size > 1:
             src = src.unsqueeze(0)
-        return src, tgt_cls, tgt_reg
+        return src, tgt_cls, tgt_reg, idx
 
     def __len__(self):
         return len(self.coords)
 
 
-def get_loader(hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, batch_size, patch_size=11,
+def get_loader(hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, batch_size, patch_size=11,
                model_name='ChenModel', shuffle=False, num_workers=0, is_3d_convolution=False):
-    dataset = HypDataset(hyper_image, norm_inv, hyper_labels_cls, hyper_labels_reg, coords, patch_size,
+    dataset = HypDataset(hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, patch_size,
                          model_name=model_name, is_3d_convolution=is_3d_convolution)
 
     data_loader = data.DataLoader(dataset=dataset,

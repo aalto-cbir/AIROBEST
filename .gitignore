@@ -7,8 +7,13 @@
 *.log
 *.out
 
+
 # Compiled
 __pycache__/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+/source/cnn/checkpoint/
+/source/cnn/data/
+/source/cnn/slurm-jobs/
