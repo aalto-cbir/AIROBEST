@@ -12,6 +12,7 @@
    Hila gridcellid and WKT geometry.
    
    The csv-file can be opened in QGIS.
+   
    EPSG:3067
 
 <br/>
@@ -19,5 +20,6 @@
 **required_stands_list.csv**
 
    List of stands that will be collected, when using AISA data from 2017.
+   The stands are selected from the limited area of the AISA image.
 
    Path to this file has to be defined in *inputs.py*
