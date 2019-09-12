@@ -17,8 +17,9 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.path
 import matplotlib
-from tools.hypdatatools_utils import *
+import numpy as np
 
+from tools.hypdatatools_utils import *
 
 def get_wavelength(hypfilename, hypdata=None):
     """
@@ -47,10 +48,63 @@ def get_wavelength(hypfilename, hypdata=None):
         bands = int(hyp_metadata['bands'])
         wl_hyp = -1 * np.arange(bands) - 1  # start at -1
     return wl_hyp, wl_found
+    
+def get_DIV( hypfilename, hypdata=None ):
+    """ read the Data Ignore Value from ENVI header
+    return None if not found
+    """
+    if hypdata is None:
+        hypdata = spectral.open_image( hypfilename )
 
+    if type(hypdata) is dict:
+        hyp_metadata = hypdata
+    else:
+        hyp_metadata = hypdata.metadata
+        
+    DIV_found = 'data ignore value' in hyp_metadata
+    if DIV_found:
+        DIV = hyp_metadata['data ignore value']
+        # metadata contains strings. We need a number (float or int)
+        if envi_isfloat( hypfilename, hyp_metadata ):
+            DIV = float(DIV)
+        else:
+            DIV = int(DIV)
+        return DIV
+    else:
+        return None
+        
+def envi_isfloat( hypfilename, hypdata=None ):
+    """ return if the file type contains floating-point.
+    If False, it's integer or byte. If type not given, return None. From documentation:
+        'data type' The type of data representation, where 1=8-bit byte; 2=16-bit
+        signed integer; 3=32-bit signed long integer; 4=32-bit floating
+        point; 5=64-bit double-precision floating point; 6=2x32-bit
+        complex, real-imaginary pair of double precision; 9=2x64-bit
+        double-precision complex, real-imaginary pair of double precision;
+        12=16-bit unsigned integer; 13=32-bit unsigned long integer;
+        14=64-bit signed long integer; and 15=64-bit unsigned long
+        integer.
+    """
+    if hypdata is None:
+        hypdata = spectral.open_image( hypfilename )
 
-def plot_hyperspectral(hypfilename, hypdata=None, hypdata_map=None, outputcommand=None, plotmode='default',
-                       plotbands=None):
+    if type(hypdata) is dict:
+        hyp_metadata = hypdata
+    else:
+        hyp_metadata = hypdata.metadata
+        
+    type_found = 'data type' in hyp_metadata
+    if type_found:
+        dt = int(hyp_metadata['data type'])
+        if dt>3 and dt<12:
+            return True
+        else:
+            return False
+    else:
+        # data type not given. Output undetermined
+        return None
+        
+def plot_hyperspectral( hypfilename, hypdata=None, hypdata_map=None, outputcommand=None, plotmode='default', plotbands=None ):
     """
     Create a figure with hyperspectral image and return handle
     hypfilename: the name + full path to Envi hdr file
@@ -81,21 +135,21 @@ def plot_hyperspectral(hypfilename, hypdata=None, hypdata_map=None, outputcomman
 
     if outputcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        outputcommand = lambda x: print(x, end='')
+        outputcommand = lambda x: print(x,end='',flush=True)
+    
+    hypdata_map_shape = ",".join( map(str,hypdata_map.shape) )
+    outputcommand( functionname + filename_short + " dimensions " + hypdata_map_shape+". \n") #shape[0]==lines, shape[1]==pixels, shape[2]==bands
 
-    hypdata_map_shape = ",".join(map(str, hypdata_map.shape))
-    outputcommand(
-        functionname + filename_short + " dimensions " + hypdata_map_shape + ". \n")  # shape[0]==lines, shape[1]==pixels, shape[2]==bands
-
-    plot_rgb = True  # flag: plot with three bands (as opposed to monochrome)
-
+    plot_rgb = True # flag: plot with three bands (as opposed to monochrome)
+    
     if plotbands is None:
         if plotmode == 'default':
             if 'default bands' in hyp_metadata:
-                if len(hyp_metadata['default bands']) > 2:
-                    i_r = int(hyp_metadata['default bands'][0]) - 1
-                    i_g = int(hyp_metadata['default bands'][1]) - 1
-                    i_b = int(hyp_metadata['default bands'][2]) - 1
+                if len( hyp_metadata['default bands'] ) > 2:
+                    i_r = int( float(hyp_metadata['default bands'][0]) ) - 1
+                    # note: direct conversion from string to int does not work if string contains decimals (e.g., '97.0')
+                    i_g = int( float(hyp_metadata['default bands'][1]) ) - 1
+                    i_b = int( float(hyp_metadata['default bands'][2]) ) - 1
                     # avoid official printing band names, they usually contain long crappy strings
                     outputcommand(
                         functionname + filename_short + ": using default bands (%i,%i,%i) for plotting RGB. \n" % (
@@ -250,11 +304,10 @@ def plot_singleband(hypfilename, hypdata=None, hypdata_map=None, bandnumber=None
 
     if outputcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        outputcommand = lambda x: print(x, end='')
-
-    hypdata_map_shape = ",".join(map(str, hypdata_map.shape))
-    outputcommand(
-        "plot_singleband(): " + filename_short + " dimensions " + hypdata_map_shape + ". ")  # shape[0]==lines, shape[1]==pixels, shape[2]==bands
+        outputcommand = lambda x: print(x,end='',flush=True)
+    
+    hypdata_map_shape = ",".join( map(str,hypdata_map.shape) )
+    outputcommand( "plot_singleband(): "+ filename_short + " dimensions " + hypdata_map_shape+". ") #shape[0]==lines, shape[1]==pixels, shape[2]==bands
 
     # try to use the default band. if more than one given, use the first. Otherwise, use first band.
     if bandnumber == None:
@@ -403,7 +456,7 @@ def create_raster_like(envifile, outfilename, Nlayers=1, outtype=4, interleave=N
     """
     Create a new envi raster of the same size and geometry as the input file (envifile)
     in:
-        envifile = the ENVI (Spectral pyhton) raster to subset
+        envifile = the ENVI (Spectral pyhton) raster to use as the example
         outfilename = the filename to create
         Nlayers: number of layers in the output file
         outtype = output file data type according to ENVI
@@ -432,7 +485,7 @@ def create_raster_like(envifile, outfilename, Nlayers=1, outtype=4, interleave=N
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
 
     functionname = "create_raster_like():"
 
@@ -477,12 +530,19 @@ def create_raster_like(envifile, outfilename, Nlayers=1, outtype=4, interleave=N
     outdata_map = outdata.open_memmap(writable=True)
 
     if fill_black:
-        localprintcommand(" and filling with DIV... ")
-        outdata_map[:, :, :] = DIV
+        localprintcommand(", filling with DIV ") 
+        DIV = get_DIV( envifile )
+        if DIV is None:
+            localprintcommand(" (no DIV in example, setting to 0) ... ") 
+            DIV = 0
+        else:
+            localprintcommand("... ")
+        outdata_map[:,:,:] = DIV
     else:
         localprintcommand("... ")
 
-    localprintcommand(" done .\n")  # actually, the file will be closed after function exits
+    localprintcommand(" done .\n") # the file will be closed as the function exits
+
     return outdata
 
 
@@ -503,7 +563,7 @@ def subset_raster(hypdata, outfilename, subset, hypdata_map=None, interleave=Non
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
 
     functionname = "subset_raster():"
 
@@ -603,8 +663,8 @@ def crop_raster(hypdata, outfilename, subset, hypdata_map=None, interleave=None,
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
-
+        localprintcommand = lambda x: print(x,end='',flush=True)
+        
     if hypdata_map is None:
         hypdata_map = hypdata.open_memmap()
 
@@ -676,7 +736,7 @@ def figure2image(fig_hypdata, hypdata, hypdata_map, outfilename, interleave="bil
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
 
     xlim = fig_hypdata.axes[0].get_xlim()
     ylim = fig_hypdata.axes[0].get_ylim()
@@ -685,9 +745,9 @@ def figure2image(fig_hypdata, hypdata, hypdata_map, outfilename, interleave="bil
         xlim[1] + 1.5)  # 0.5 to get rounding right + 1 as the pixel at xmax will be the first to excluded from subset
     ymin = int(ylim[1] + 0.5)
     ymax = int(ylim[0] + 1.5)
-
-    imaxx = hypdata_map.shape[1]
-    imaxy = hypdata_map.shape[0]
+    
+    # imaxx = hypdata_map.shape[1] 
+    # imaxy = hypdata_map.shape[0]
 
     if xmin >= xmax or ymin >= ymax:
         localprintcommand("figure2image(): No pixels in the zoomed area. Aborting.\n")
@@ -859,9 +919,9 @@ def read_spectralsensitivity(spectralsensitivityfile, hyp_wl=None, localprintcom
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
-    functionname = 'read_spectralsensitivity(): '  # for messaging
-
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'read_spectralsensitivity(): ' # for messaging
+        
     # read the band sensitivity functions
     (M, headers) = readtextfile(spectralsensitivityfile)
     ss_wl = M[:, 0]
@@ -935,9 +995,9 @@ def resample_hyperspectral(hyp_infile, spectralsensitivitymatrix, out_pixelsize,
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
-    functionname = 'resample_hyperspectral(): '  # for messaging
-
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'resample_hyperspectral(): ' # for messaging
+    
     if hypdata is None:
         hypdata = spectral.open_image(hyp_infile)
         # open the file as a "memory map", a numpy matrix-like object. 
@@ -1112,4 +1172,108 @@ def sentinel2_pixelsize():
     Return a ndarray with the pixel sizes of Sentinel-2 in meters
     """
     #                 B1  B2  B3  B4  B5  B6  B7  B8  B8A B9  B10 B11 B12
-    return np.array((60, 10, 10, 10, 20, 20, 20, 10, 20, 60, 60, 20, 20))
+    return np.array( (60, 10, 10, 10, 20, 20, 20, 10, 20, 60, 60, 20, 20) )
+
+def envihdr2datafile( hdrfilename, localprintcommand=None ):
+    """
+    try to locate the data file associated with the ENVI header file hdrfilename
+    because gdal wants the name of the data file, not hdr
+    out:
+        the full filename of the data file
+    """
+    if localprintcommand is None:
+        # use a print command with no line feed in the end. The line feeds are given manually when needed.
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'envihdr2datafile(): ' # for messaging
+    
+    # for envi files: gdal wants the name of the data file, not hdr
+    hdrfilename_split = os.path.splitext( hdrfilename )
+    
+    if hdrfilename_split[1] == ".hdr":
+        datafilename = hdrfilename_split[0]
+        if not os.path.exists(datafilename):
+            # try different extensions, .dat and .bin and .bil
+            basefilename = datafilename
+            datafilename += '.dat'
+            if not os.path.exists(datafilename):
+                datafilename  = basefilename + '.bin'
+                if not os.path.exists(datafilename):
+                    datafilename  = basefilename + '.bil'
+                    if not os.path.exists(datafilename):
+                        datafilename  = basefilename + '.bsq'
+                        if not os.path.exists(datafilename):
+                            localprintcommand(functionname + "Cannot find the data file corresponding to {}.\n".format(hdrfilename) )
+                            datafilename = ''
+    return datafilename
+    
+def envidata2hdrfile( envidatafilename, localprintcommand=None ):
+    """
+    try to locate the header file associated with the ENVI data file envidatafilename
+    because gdal wants the name of the data file, not hdr; but sometimes we need hdr.
+    out:
+        the full filename of the header file
+    """
+    if localprintcommand is None:
+        # use a print command with no line feed in the end. The line feeds are given manually when needed.
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'datafile2envihdr(): ' # for messaging
+    
+    # for envi files: gdal wants the name of the data file, not hdr
+    basefilename = os.path.splitext( envidatafilename )[0]
+    hdrfilename = basefilename + '.hdr'
+    if not os.path.exists(hdrfilename):
+        # try just adding hdr to datafile 
+        hdrfilename = envidatafilename + '.hdr'
+        if not os.path.exists(hdrfilename):
+            # no idea how to proceed
+            hdrfilename = ''
+            localprintcommand(functionname + "Cannot find the hdr file corresponding to {}.\n".format(envidatafilename) )
+    return hdrfilename
+
+def envifilecomponents( filename_in, localprintcommand=None ):
+    """
+    Tries to guess the envi data file and header file names from filename_in
+    filename_in is either data or header file
+    """
+    if localprintcommand is None:
+        # use a print command with no line feed in the end. The line feeds are given manually when needed.
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'envifilecomponents(): ' # for messaging
+    
+    base_in, extension_in = os.path.splitext( filename_in)
+    if  extension_in == ".hdr" or extension_in == ".HDR":
+        headerfile = filename_in
+        datafile = envihdr2datafile( headerfile, localprintcommand=localprintcommand  )
+    else:
+        # assume we were given the data file name
+        datafile = filename_in
+        headerfile = envidata2hdrfile( datafile, localprintcommand=localprintcommand )
+    return datafile, headerfile
+
+def envi_addheaderfield( envifilename, fieldname, values, checkifexists=True, localprintcommand=None ):
+    """
+    Adds a aline to ENVI header file. This function is in gdal-functions because it depends on envifilecomponents.
+    ENVI file should be closed before rewriting.
+    envifilename: string, file name
+    fieldname: name of the field to add
+    values: the value to add. Can be a list, e.g. one per band
+    checkifexists: flag -- whether to stop if the field already exists
+    """
+    
+    if localprintcommand is None:
+        # use a print command with no line feed in the end. The line feeds are given manually when needed.
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'envi_addheaderfield(): ' # for messaging
+
+    datafile,hdrfile = envifilecomponents( envifilename, localprintcommand=localprintcommand )
+    
+    if checkifexists and fieldname in open(hdrfile).read() :
+        localprintcommand( functionname +" field <{}> already exists in {}. Stopping.\n"
+            .format( fieldname, hdrfile ) )
+    else:
+        with open(hdrfile,'a') as hfile:
+            valuestr = [ str(i) for i in values ]
+            outstr = fieldname + " = {" + ", ".join(valuestr) + "}"
+            hfile.write( outstr )
+        localprintcommand( functionname +" Added field <{}> to {}.\n"
+            .format( fieldname, hdrfile ) )

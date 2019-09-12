@@ -30,10 +30,10 @@ def readtextfile(filename, converttonumbers=True, localprintcommand=None):
 
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
-    functionname = 'readtextfile(): '  # for messaging
-
-    readxy = False
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'readtextfile(): ' # for messaging
+    
+    readxy=False 
     # try different separators numbers of header rows 
     # read as unicode text, so maybe it's all unnecessary? -- but there may be commentary lines with 
     for rowstoskip in range(3):
@@ -86,9 +86,8 @@ def savehyperspectralfolders(localprintcommand=None):
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
-    functionname = 'loadhyperspectralfolders(): '  # for messaging
-
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'loadhyperspectralfolders(): ' # for messaging
     global hyperspectral_datafolder
     global spectralsensitivity_folder
 
@@ -106,9 +105,8 @@ def loadhyperspectralfolders(localprintcommand=None):
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x, end='')
-    functionname = 'loadhyperspectralfolders(): '  # for messaging
-
+        localprintcommand = lambda x: print(x,end='',flush=True)
+    functionname = 'loadhyperspectralfolders(): ' # for messaging
     global hyperspectral_datafolder
     global spectralsensitivity_folder
     global datafolders_loaded

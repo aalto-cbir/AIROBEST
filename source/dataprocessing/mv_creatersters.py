@@ -9,6 +9,7 @@ You should have received a copy of the GNU General Public License along with thi
 Rasterizes Finnish Forestry Center standwise data
 
 """
+# os.chdir( os.path.expanduser('~/python'))
 import numpy as np
 import spectral
 import spectral.io.envi as envi
@@ -20,18 +21,27 @@ import datetime
 # load the hyperspectral functions -- not yet a package
 #   add the folder with these functions to python path
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+# AIROBEST_dir = "../.." # path to AIROBEST folder
+AIROBEST_dir = 'hyperspectral\\AIROBEST'
+
+if not AIROBEST_dir in sys.path:
+    sys.path.append(AIROBEST_dir)
+# sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 from tools.hypdatatools_img import *
 from tools.hypdatatools_gdal import *
 import tools.borealallometry
 
-filenames_mv = [ "D:/mmattim/wrk/hyytiala-D/mv/MV_Juupajoki.gpkg", "D:/mmattim/wrk/hyytiala-D/mv/MV_Ruovesi.gpkg" ]
+filenames_mv = [ "MV_Juupajoki.gpkg", "MV_Ruovesi.gpkg" ]
+# datafolder_mv = "/homeappl/home/mottusma/data"
+datafolder_mv = "D:/mmattim/wrk/hyytiala-D/mv"
 
-datafolder = 'D:/mmattim/wrk/hyytiala-D/AISA2017'
+hypdatafolder = 'D:/mmattim/wrk/hyytiala-D/AISA2017'
+# hypdatafolder = '/homeappl/home/mottusma/project_deepsat/hyperspectral'
 hyperspectral_filename = '20170615_reflectance_mosaic_128b.hdr' 
 
 outfolder = 'D:/mmattim/wrk/hyytiala-D/temp'
+# outfolder = hypdatafolder
 filename_newraster = os.path.join( outfolder, "forestdata")
 
 # Fill in species-specific STAR and slw
@@ -57,12 +67,13 @@ outlist = [ [], [] ] + [ [] for i in fieldnames_in ] # geometries and other data
 outlist_extra = [] # data combined from other data tables (list of lists)
 outlist_extranames = [] # names of the variables in outlist_extra
 
-for filename_mv in filenames_mv:
+for fi in filenames_mv:
+    filename_mv = os.path.join( datafolder_mv, fi ) 
     outlist_i = ( vector_getfeatures( filename_mv, fieldnames_in ) )
     # outlist contains n+2 sublists: FID, geometries, standid, fertilityclass, etc
     geomlist_i = outlist_i[1]
     
-    filename_AISA = os.path.join(datafolder,hyperspectral_filename)
+    filename_AISA = os.path.join(hypdatafolder,hyperspectral_filename)
     i_stand = geometries_subsetbyraster( geomlist_i, filename_AISA, reproject=False )
         # reproject=False speeds up processing, otherwise each geometry would be individually reprojected prior to testing
     print("{:d} features (of total {:d}) found within raster {}".format( len(i_stand), len(geomlist_i), filename_AISA ) )
@@ -288,7 +299,7 @@ mvdata = create_raster_like( filename_AISA, filename_newraster , Nlayers=len(out
 mvdata_map = mvdata.open_memmap( writable=True )
 
 # create a memory shapefile with standid and fertility data
-ii = 0
+ii = 0 # Note to self: unclear why ii is necessary, why not use i_zip?
 # loop over all data to be saved in the raster
 for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     # convert data inoto a integer-encodable format

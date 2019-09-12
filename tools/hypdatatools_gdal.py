@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import matplotlib.path 
 import gdal
 from osgeo import ogr,osr
+
 from tools.hypdatatools_img import *
 
 # Mapping of Python types to OGR field types. Using other data types with this library will just fail
@@ -275,15 +276,14 @@ def plot_clearvectors( figurehandle ):
 
   
 def pixel_coords( hypfilename, point, areasize, areaunit, areashape, hypdata=None ):
-    """
-    give the coordinates of pixels (in image coordinates) to be sampled around point
+    """give the coordinates of pixels (in image coordinates) to be sampled around point
     hypfilename: the filename or spectral file  handle of hyperspectral data file
     point: (x,y) coordinates of the point in global coordinates
     areasize: size of the sampled area (circle diameter, square side)
     areaunit: unit in which areasize is given ("meter" or "pixel", first letter suffices)
     areashape: 'circle' or 'square' (first letter suffices)
-    hypdata, spectral handle for file the file. If given, hypfilename will not be reopened
-    output
+    hypdata, spectral handle for file the file.
+        If given, hypfilename will not be reopened output
     coordlist: list of two lists: ( (y) , (x) )
      NOTE! Envi BIL files have y (line) for first coordinate [0], x (pixel) for second [1]
     """
@@ -356,9 +356,8 @@ def pixel_coords( hypfilename, point, areasize, areaunit, areashape, hypdata=Non
     return coordlist
 
 def points_from_shape( rasterfile_in, geometry, rasterfile_hdr=None, localprintcommand=None ):
-    """ 
-    subset a raster file with a vector using matplotlib.path
-    outputs the coordlist [ [x0], [x1] ] ] of the coordinates in points inside the raster file in global coordinates
+    """ subset a raster file with a vector using matplotlib.path
+    outputs the coordlist [ [x0], [x1] ] ] of the coordinates in points inside the raster file in image coordinates
         the coordlist can be directly used to subset a raster
     inputs
         rasterfile_in: name of hyperspectral data file, the header file, or GDAL raster file handle (gdal.Dataset)
@@ -367,10 +366,11 @@ def points_from_shape( rasterfile_in, geometry, rasterfile_hdr=None, localprintc
             NOTE: the linearrings may not have a SpatialRef attached.
             Some other geometries may also be potentially useful, see ??8.2.8 (page 66) of
             http://portal.opengeospatial.org/files/?artifact_id=25355
-        rasterfile_hdr: the enf´vi header file name. If given, rasterfile_in is assumed to be GDAL raster file handle (gdal.Dataset) without any checks
+        rasterfile_hdr: the envi header file name. If given, rasterfile_in is assumed to be GDAL raster file handle (gdal.Dataset) without any checks
         localprintcommand: the local routine for message output. It is not used, only passed through
     output
-        coordlist [ [x0], [x1] ] ]: a list of two lists, each containing the coordinates of the points in image coordinates
+        coordlist [ [x0], [x1] ] ]: a list of two lists, each containing 
+            the coordinates in image coordinates (=indices) of the pixels within the geometry 
     NOTE: the extent of the geometry is calculated assuming no rotation between global and image coordinate systems
     """
     
@@ -541,7 +541,7 @@ def vector_getfieldnames( filename_in, layernumber=0, localprintcommand=None ):
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'vector_getfieldnames(): ' # for messaging
     
     # open the file (e.g., geopackage) as shapefile
@@ -568,7 +568,7 @@ def vector_getWKT( infile, layernumber=0, localprintcommand=None):
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'vector_getWKT(): ' # for messaging
 
     sh_projectionWkt = None # output
@@ -595,7 +595,7 @@ def vector_getSpatialReference( filename_in, layernumber=0, localprintcommand=No
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'vector_getWKT(): ' # for messaging
 
     sh_SpetialReference = None # output
@@ -611,12 +611,12 @@ def vector_getSpatialReference( filename_in, layernumber=0, localprintcommand=No
     return sh_SpatialReference
     
 def vector_getfeatures( filename_in, fieldnames_in=None, layernumber=0, localprintcommand=None ):
-    """
-    get the features and the associated spatial entities from a vector file.
-    in: filename, 
-        the names of the fields to retrieve. if no names are given, just field IDs are retrieved
-        the number of the layer to get the field data from
-    output: a list with at least two elements:
+    """ get the features and the associated spatial entities from a vector file.
+    in: filename: geopackage or shapefile file name
+        fieldnames_in: list (or other iterable) with the names of the fields to retrieve. 
+            If no names are given, just field IDs are retrieved
+        layernumber: the number of the layer to get the field data from
+    out: a list with at least two elements:
         1) feature IDs
         2) feature geometries
         if fieldnames_in is not None, followed by lists of field values (one list per field, each list has one element per feature)
@@ -624,7 +624,7 @@ def vector_getfeatures( filename_in, fieldnames_in=None, layernumber=0, localpri
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'vector_getfeatures(): ' # for messaging
 
     # open geopackage or shapefile
@@ -637,12 +637,13 @@ def vector_getfeatures( filename_in, fieldnames_in=None, layernumber=0, localpri
         geomlist = []
         # create a list of empty lists to store output values
         valuelist = []
-        for fn in fieldnames_in:
-            valuelist.append( [] )
-        # convert field names to numbers
-        ldefn = sh_layer.GetLayerDefn()
-        fieldnames = [ ldefn.GetFieldDefn(n).name for n in range(ldefn.GetFieldCount()) ]
-        fieldnumbers = [ fieldnames.index(x) if x in fieldnames else -1 for x in fieldnames_in ]
+        if fieldnames_in is not None:
+            for fn in fieldnames_in:
+                valuelist.append( [] )
+            # convert field names to numbers
+            ldefn = sh_layer.GetLayerDefn()
+            fieldnames = [ ldefn.GetFieldDefn(n).name for n in range(ldefn.GetFieldCount()) ]
+            fieldnumbers = [ fieldnames.index(x) if x in fieldnames else -1 for x in fieldnames_in ]
             
         for feature in sh_layer:
             # Lauri saved geometries as strings-- likely he found it to be sufficiently robust, instead of copying the geometries
@@ -652,13 +653,15 @@ def vector_getfeatures( filename_in, fieldnames_in=None, layernumber=0, localpri
             # shapes[str(feature.GetField("standid"))] = str(feature.GetGeometryRef()) 
             geomlist.append( feature.GetGeometryRef().Clone() ) 
             FIDlist.append( feature.GetFID() )
-            for vl,fn in zip(valuelist,fieldnumbers):
-                vl.append( feature.GetField( fn ) if fn>-1 else None )
+            if fieldnames_in is not None:
+                for vl,fn in zip(valuelist,fieldnumbers):
+                    vl.append( feature.GetField( fn ) if fn>-1 else None )
         #print(len(FIDlist))
         outlist = [ FIDlist, geomlist ]
         # add the values for requested fields
-        for valuesublist in valuelist:
-            outlist.append( valuesublist )
+        if fieldnames_in is not None:
+            for valuesublist in valuelist:
+                outlist.append( valuesublist )
     else:
         outlist = []
     sh_file.Release()
@@ -696,7 +699,7 @@ def vector_swapdata2( infile, featuredict, fieldnames=None, keyfield=None, filen
         
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'vector_getfeatures(): ' # for messaging
     
     # find out if we have only one field to create, and wrap it in list if necessary
@@ -810,7 +813,7 @@ def vector_newfile( geometrylist, featuredict, filename_out=None, layername_out 
         
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'vector_getfeatures(): ' # for messaging
 
     # Make sure featuredict keys are strings
@@ -903,7 +906,7 @@ def vector_rasterize_like( shpfile, rasterfile, shpfield=None, layernumber=0, dt
         rasterfile: the sample raster used to get geometry from
         shpfield: (str) name of the field in shapefile to get the raster levels from. If none, a constant value of one is used to create a mask
         layernumber: which layer is shpfile to use
-        dtype: pyhton data type to for raster. If None, determined based on the values in shpfield
+        dtype: python data type to for raster. If None, determined based on the values in shpfield
             dtype is converted to gdal type using GDAL_FIELD_TYPES_MAP defined at the beginning of this file
         RasterizeOptions: a list that will be passed to GDAL RasterizeLayers -- papszOptions, like ["ALL_TOUCHED=TRUE"]
             shpfield is added to the beginning of the options sent to RasterizeLayers 
@@ -914,7 +917,7 @@ def vector_rasterize_like( shpfile, rasterfile, shpfield=None, layernumber=0, dt
             
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'vector_rasterize_like(): ' # for messaging
     
     if type( rasterfile ) is gdal.Dataset:
@@ -972,24 +975,28 @@ def vector_rasterize_like( shpfile, rasterfile, shpfield=None, layernumber=0, dt
         return None
 
 def vector_rasterize( shpfile, rasterfile, shpfield=None, layernumber=0, band=1, RasterizeOptions=[], localprintcommand=None ):
-    """
-    Rasterize a shapefile into an existing raster shapefile, rasterizes it in memory so it has the exact same extent as the rasterfile.
-    NOTE: seems to give error "ERROR 3: Failed to write scanline 0 to file" when doing raster.FlushCache() on an ENVI file
+    """ Rasterize a shapefile into an existing raster shapefile, rasterizes it in
+        memory so it has the exact same extent as the rasterfile.
+    NOTE: seems to give error "ERROR 3: Failed to write scanline 0 to file" when
+        doing raster.FlushCache() on an ENVI file
     in:
         shpfile: file to rasterize
         rasterfile: the existing file which will be written into
-        shpfield: (str) name of the field in shapefile to get the raster levels from. If none, a constant value of one is used to create a mask
+        shpfield: (str) name of the field in shapefile to get the raster levels from. 
+            If none, a constant value of one is used to create a mask
         layernumber: which layer is shpfile to use
-        band: band number in rasterfile to modify -- this band will include the rastrized vector
-        RasterizeOptions: a list that will be passed to GDAL RasterizeLayers -- papszOptions, like ["ALL_TOUCHED=TRUE"]
-            shpfield is added to the beginning of the options sent to RasterizeLayers 
+        band: band number in rasterfile to modify -- this band will include the 
+            rastrized vector
+        RasterizeOptions: a list that will be passed to GDAL RasterizeLayers 
+            -- papszOptions, like ["ALL_TOUCHED=TRUE"] shpfield is added to 
+            the beginning of the options sent to RasterizeLayers 
     out:
         True or False (success or failure)
     """
             
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'vector_rasterize(): ' # for messaging
     
     if type( rasterfile ) is gdal.Dataset:
@@ -1031,7 +1038,9 @@ def vector_rasterize( shpfile, rasterfile, shpfield=None, layernumber=0, band=1,
             .format( layernumber, shape_name ) )
         return False
     
-    
+
+
+
 def geopackage_getdatatables( datasource, localprintcommand=None ):
     """
     get the data tables from a geopackage file.
@@ -1041,7 +1050,7 @@ def geopackage_getdatatables( datasource, localprintcommand=None ):
     
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geopackage_getdatatables(): ' # for messaging
     
     # open geopackage as sqlite database if necessary
@@ -1072,7 +1081,7 @@ def geopackage_getfieldnames( datasource, tablename, localprintcommand = None ):
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geopackage_getfieldnames(): ' # for messaging
     
     # open geopackage as sqlite database if necessary
@@ -1108,7 +1117,7 @@ def geopackage_getuniquevalues( datasource, tablename, fieldnames, additionalcon
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geopackage_getuniquevalues(): ' # for messaging
     
     # open geopackage as sqlite database if necessary
@@ -1151,7 +1160,7 @@ def geopackage_getvalues( datasource, tablename, fieldnames, additionalconstrain
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geopackage_getvalues(): ' # for messaging
     
     # open geopackage as sqlite database if necessary
@@ -1199,7 +1208,7 @@ def geopackage_getspecificvalues1( datasource, tablename, fieldname, values_in, 
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geopackage_getspecificvalues(): ' # for messaging
     
     # open geopackage as sqlite database if necessary
@@ -1247,7 +1256,7 @@ def geopackage_getspecificvalues2( datasource, tablename, fieldnames, value_in, 
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geopackage_getspecificvalues2(): ' # for messaging
     
     # open geopackage as sqlite database if necessary
@@ -1299,7 +1308,7 @@ def geopackage_uniquevalues( datasource, tablename, fieldname, additionalconstra
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geopackage_uniquevalues(): ' # for messaging
     
     # open geopackage as sqlite database if necessary
@@ -1337,7 +1346,7 @@ def geopackage_countvalues( datasource, tablename, fieldname, fieldname_in, addi
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geopackage_countvalues(): ' # for messaging
     
     # open geopackage as sqlite database if necessary
@@ -1384,14 +1393,14 @@ def geometries_subsetbyraster( geometrylist, rasterfile_in, reproject=True, loca
     """
     if localprintcommand is None:
         # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
+        localprintcommand = lambda x: print(x,end='',flush=True)
     functionname = 'geometries_subsetbyraster(): ' # for messaging
     
     # open the raster file with gdal to get geometry
     # for envi files: gdal wants the name of the data file, not hdr
-    rasterfile = envihdr2datafile( rasterfile_in )
+    rasterfile,hdrfile = envifilecomponents(rasterfile_in)
     if rasterfile == '' :
-        localprintcommand(functionname + "Cannot find the data file corresponding to {}, ".format(rasterfile_orig) )
+        localprintcommand(functionname + "Cannot find the data file corresponding to {}, ".format(rasterfile_in) )
 
     f1_gdal = gdal.Open( rasterfile )
     outlist = []
@@ -1453,104 +1462,4 @@ def get_rasterextent_gdal( rasterfile ):
     ymax = max( [ Y00, Y01, Y10, Y11 ] )
     return [ xmin, xmax, ymin, ymax ]
     
-def envihdr2datafile( hdrfilename, localprintcommand=None ):
-    """
-    try to locate the data file associated with the ENVI header file hdrfilename
-    because gdal wants the name of the data file, not hdr
-    out:
-        the full filename of the data file
-    """
-    if localprintcommand is None:
-        # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
-    functionname = 'envihdr2datafile(): ' # for messaging
-    
-    # for envi files: gdal wants the name of the data file, not hdr
-    hdrfilename_split = os.path.splitext( hdrfilename )
-    
-    if hdrfilename_split[1] == ".hdr":
-        datafilename = hdrfilename_split[0]
-        if not os.path.exists(datafilename):
-            # try different extensions, .dat and .bin and .bil
-            basefilename = datafilename
-            datafilename += '.dat'
-            if not os.path.exists(datafilename):
-                datafilename  = basefilename + '.bin'
-                if not os.path.exists(datafilename):
-                    datafilename  = basefilename + '.bil'
-                    if not os.path.exists(datafilename):
-                        localprintcommand(functionname + "Cannot find the data file corresponding to {}.\n".format(hdrfilename) )
-                        datafilename = ''
-    return datafilename
-    
-def envidata2hdrfile( envidatafilename, localprintcommand=None ):
-    """
-    try to locate the header file associated with the ENVI data file envidatafilename
-    because gdal wants the name of the data file, not hdr; but sometimes we need hdr.
-    out:
-        the full filename of the header file
-    """
-    if localprintcommand is None:
-        # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
-    functionname = 'datafile2envihdr(): ' # for messaging
-    
-    # for envi files: gdal wants the name of the data file, not hdr
-    basefilename = os.path.splitext( envidatafilename )[0]
-    hdrfilename = basefilename + '.hdr'
-    if not os.path.exists(hdrfilename):
-        # try just adding hdr to datafile 
-        hdrfilename = envidatafilename + '.hdr'
-        if not os.path.exists(hdrfilename):
-            # no idea how to proceed
-            hdrfilename = ''
-            localprintcommand(functionname + "Cannot find the hdr file corresponding to {}.\n".format(envidatafilename) )
-    return hdrfilename
-
-def envifilecomponents( filename_in, localprintcommand=None ):
-    """
-    Tries to guess the envi data file and header file names from filename_in
-    filename_in is either data or header file
-    """
-    if localprintcommand is None:
-        # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
-    functionname = 'envifilecomponents(): ' # for messaging
-    
-    base_in, extension_in = os.path.splitext( filename_in)
-    if  extension_in == ".hdr" or extension_in == ".HDR":
-        headerfile = filename_in
-        datafile = envihdr2datafile( headerfile, localprintcommand=localprintcommand  )
-    else:
-        # assume we were given the data file name
-        datafile = filename_in
-        headerfile = envidata2hdrfile( datafile, localprintcommand=localprintcommand )
-    return datafile, headerfile
-
-def envi_addheaderfield( envifilename, fieldname, values, checkifexists=True, localprintcommand=None ):
-    """
-    Adds a aline to ENVI header file. This function is in gdal-functions because it depends on envifilecomponents.
-    ENVI file should be closed before rewriting.
-    envifilename: string, file name
-    fieldname: name of the field to add
-    values: the value to add. Can be a list, e.g. one per band
-    checkifexists: flag -- whether to stop if the field already exists
-    """
-    
-    if localprintcommand is None:
-        # use a print command with no line feed in the end. The line feeds are given manually when needed.
-        localprintcommand = lambda x: print(x,end='')
-    functionname = 'envi_addheaderfield(): ' # for messaging
-
-    datafile,hdrfile = envifilecomponents( envifilename, localprintcommand=localprintcommand )
-    
-    if checkifexists and fieldname in open(hdrfile).read() :
-        localprintcommand( functionname +" field <{}> already exists in {}. Stopping.\n"
-            .format( fieldname, hdrfile ) )
-    else:
-        with open(hdrfile,'a') as hfile:
-            valuestr = [ str(i) for i in values ]
-            outstr = fieldname + " = {" + ", ".join(valuestr) + "}"
-            hfile.write( outstr )
-        localprintcommand( functionname +" Added field <{}> to {}.\n"
-            .format( fieldname, hdrfile ) )
+            
