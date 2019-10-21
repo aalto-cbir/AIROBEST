@@ -807,8 +807,8 @@ def vector_newfile( geometrylist, featuredict, filename_out=None, layername_out 
         geometrylist: a  list of geometries (OGRSpatialReference), currently have to be ogr.wkbPolygon
         featuredict: a dictionary of field values for features, keys are field names, values are lists of the same length as geometrylist. 
             All lists should be of the same length and have consistent typing for all elements.
-        filename_out: the output file name. If not given, a file is created and a handle is returned
-    output: a file handle (if file is creted in memory), or None
+        filename_out: the output file name. If not given, a file is created in memory and a handle is returned
+    output: a file handle (if file is created in memory), or None
     """
         
     if localprintcommand is None:
