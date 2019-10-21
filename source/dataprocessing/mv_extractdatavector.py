@@ -22,11 +22,14 @@ import datetime
 # Pyzo needs these commands to be run from a file in this folder, otherwise it cannot find tools (??)
 import sys
 import importlib
-AIROBEST_dir = 'hyperspectral\\AIROBEST'
+
+AIROBEST_dir = '../..'
 if not AIROBEST_dir in sys.path:
     sys.path.append(AIROBEST_dir)
 # sys.path.append("C:\\Users\\MMATTIM\\OneDrive - Teknologian Tutkimuskeskus VTT\\koodid\\python\\hyperspectral\\AIROBEST")
-from tools.hypdatatools_gdal import * 
+# sys.path.append("hyperspectral\\AIROBEST")
+
+from tools.hypdatatools_gdal import *
 
 filenames_mv = [ "D:/mmattim/wrk/hyytiala-D/mv/MV_Juupajoki.gpkg", "D:/mmattim/wrk/hyytiala-D/mv/MV_Ruovesi.gpkg" ]
 
@@ -204,31 +207,31 @@ for filename_mv in filenames_mv:
             i_sort = np.flip( np.argsort( [ i[0] for i in qb] ),0 )
                 # qb needs to be unpacked, and then the resulting index flipped
             species_1.append( qs[ int(i_sort[0]) ][0] ) 
-            dbh_1.append( qd[ int(i_sort[0]) ][0] ) 
+            dbh_1.append( qd[ int(i_sort[0]) ][0] ) # [cm]
             height_1.append( qh[ int(i_sort[0]) ][0] )  
-            diam = qd[ int(i_sort[0]) ][0]**2*np.pi*1e-4  # diameter was in cms
-            if diam > 0:
-                density_1.append( qb[ int(i_sort[0]) ][0]/diam )
+            treearea = (qd[ int(i_sort[0]) ][0]*0.5)**2*np.pi*1e-4 # trunk area at breast height [m2]
+            if treearea > 0:
+                density_1.append( qb[ int(i_sort[0]) ][0]/treearea )
             else:
                 density_1.append( 0. )
                 
             if len(qb)>1:
                 species_2.append( qs[ int(i_sort[1]) ][0] ) 
-                dbh_2.append( qd[ int(i_sort[1]) ][0] ) 
+                dbh_2.append( qd[ int(i_sort[1]) ][0] ) # [cm]
                 height_2.append( qh[ int(i_sort[1]) ][0] )  
-                diam = qd[ int(i_sort[1]) ][0]**2*np.pi*1e-4  # diameter was in cms
-                if diam > 0:
-                    density_2.append( qb[ int(i_sort[1]) ][0]/diam )
+                treearea = (qd[ int(i_sort[1]) ][0]*0.5)**2*np.pi*1e-4  # trunk area at breast height [m2]
+                if treearea > 0:
+                    density_2.append( qb[ int(i_sort[1]) ][0]/treearea )
                 else:
                     density_2.append( 0. )
                 if len(qb)>2:
                     # we have at least three strata
                     species_3.append( qs[ int(i_sort[2]) ][0] ) 
-                    dbh_3.append( qd[ int(i_sort[2]) ][0] ) 
+                    dbh_3.append( qd[ int(i_sort[2]) ][0] ) # [cm]
                     height_3.append( qh[ int(i_sort[2]) ][0] )  
-                    diam = qd[ int(i_sort[2]) ][0]**2*np.pi*1e-4  # diameter was in cms
-                    if diam > 0:
-                        density_3.append( qb[ int(i_sort[2]) ][0]/diam )
+                    treearea = (qd[ int(i_sort[2]) ][0]*0.5)**2*np.pi*1e-4  # trunk area at breast height [m2]
+                    if treearea > 0:
+                        density_3.append( qb[ int(i_sort[2]) ][0]/treearea )
                     else:
                         density_3.append( 0. )
                 else:
@@ -318,5 +321,5 @@ formatline = "%.i\t%i\t%i\t%3.1f\t%i"+ \
     "\t%3.1f\t%3.1f\t%3.1f\t%i\t%3.1f" +\
     "\t%3.1f\t%i\t%i\%3.1f\t%3.1f"+ \
     "\t%3.1f"
-np.savetxt( filename_out, np.array(outfeatures).transpose(), fmt='%s', delimiter='\t', header=headerline )
+# np.savetxt( filename_out, np.array(outfeatures).transpose(), fmt='%s', delimiter='\t', header=headerline )
 # actually, delimiter='\t' has no effect, delimiters are specified by formatline
