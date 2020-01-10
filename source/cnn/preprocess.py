@@ -20,6 +20,8 @@ from tools.hypdatatools_img import get_geotrans
 
 sys.stdout.flush()
 
+#datadir = '/proj/deepsat/hyperspectral'
+datadir = '/scratch/project_2001284/deepsat/hyperspectral'
 
 def parse_args():
     """ Parsing arguments """
@@ -28,15 +30,15 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-hyper_data_path',
                         required=False, type=str,
-                        default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
+                        default=datadir+'/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data')
     parser.add_argument('-forest_data_path',
                         required=False, type=str,
-                        default='/proj/deepsat/hyperspectral/forestdata.hdr',
+                        default=datadir+'/forestdata.hdr',
                         help='Path to forest data')
     parser.add_argument('-human_data_path',
                         required=False, type=str,
-                        default='/proj/deepsat/hyperspectral/Titta2013.txt',
+                        default=datadir+'/Titta2013.txt',
                         help='Path to human verified data (Titta points)')
     parser.add_argument('-save_dir',
                         required=False, type=str,
@@ -95,11 +97,11 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt, should_rem
     hyper_labels = np.array(forest_labels[r:(r+rows), c:(c+cols)])
 
     if should_remove_bad_data:
-        stand_id_data = spectral.open_image('/proj/deepsat/hyperspectral/standids_in_pixels.hdr')
+        stand_id_data = spectral.open_image(datadir+'/standids_in_pixels.hdr')
         stand_ids_full = stand_id_data.open_memmap()
         stand_ids_mapped = np.array(stand_ids_full[r:(r + rows), c:(c + cols)], dtype='int')  # shape RxCx1
         stand_ids_mapped = np.squeeze(stand_ids_mapped)  # remove the single-dimensional entries, size RxC
-        bad_stand_df = pd.read_csv('/proj/deepsat/hyperspectral/bad_stands.csv')
+        bad_stand_df = pd.read_csv(datadir+'/bad_stands.csv')
         bad_stand_list = bad_stand_df['standid'].tolist()
         for stand_id in bad_stand_list:
             hyper_labels[stand_ids_mapped == stand_id] = 0
