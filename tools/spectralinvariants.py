@@ -83,8 +83,8 @@ def p(hypdata, refspectrum):
     Syy = (y_DASF * y_DASF).sum() - Sy * Sy / n
     Sxy = (hypdata * y_DASF).sum() - Sx * Sy / n
     p_out = Sxy / Sxx  # p = slope
-    rho_out = (Sy - p_values[0] * Sx) / n  # rho = intercept
-    DASF_out = p_values[1] / (1 - p_values[0])  # DASF
+    rho_out = (Sy - p_out * Sx) / n  # rho = intercept
+    DASF_out = rho_out / (1 - p_values[0])  # DASF
     R_out = Sxy / np.sqrt(Sxx * Syy)  # R = Pearson's correlation coefficient
 
     return (p_out, rho_out, DASF_out, R_out)
