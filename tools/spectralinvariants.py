@@ -147,7 +147,7 @@ def referencealbedo_transformed( wl=None, model="PROSPECTCp"):
     Returns the *TRANSFORMED* reference albedo based on the selected PROSPECT model
     Transformation is based on the paper by Lewis & Disney (2007) in RSE
 
-    :param wl: the wavelengths used
+    :param wl: the wavelengths used. If None, output with RPOSPECT wavelengths
     :param model: str with the flavor of PROSPECT to be used; see referencealbedo() for details
     :return: ndarray with the albedo values
     """

@@ -21,41 +21,47 @@ import time
 from scipy.optimize import curve_fit, least_squares
 
 import tools.spectralinvariants
+import tools.hypdatatools_img
 
-def p_processing( filename1, refspecno, wl_p, filename2, filename3, tkroot=None, file2_handle=None, file2_datahandle=None, progressvar=None ):
-    """
-    the actual function which does the processing
-    inputs: 
-      filename1 : reference data file name (incl full directory)
-      refspecno : integer indicating which spectrum in filename1 to use
-      wl_p : index of wavelengths used in computations 
-      filename2 : the hyperspectraldata file which is used as input
-      filename3 : the name of the data file to create
+def p_processing( filename1, refspecno, wl_p, filename2, filename3, tkroot=None, file2_handle=None, file2_datahandle=None, progressvar=None, 
+    refspec=None, refspecname='RefenceSpectrum' ):
+    """the actual function which does the processing
+
+    Args:
+      filename1 (str): reference spectrum file name (incl full directory)
+      refspecno (int): spectrum in filename1 to use
+      wl_p ([int]): index of wavelengths used in computations 
+      filename2 (str): the hyperspectraldata file which is used as input
+      filename3 (str): the name of the data file to create
     optional inputs:
       tkroot : tkinter root window handle for signaling progress
       file2_handle=None : the spectral pyhton file handle if file is already open (for metadata)
       file2_datahandle=None : the spectral pyhton handle for hyperspectral data if file is already open
-    filename2 is not reopened if the file handle exists (data handle is not checked)
+        filename2 is not reopened if the file handle exists (data handle is not checked)
       progressvar: NEEDS TO BE DoubleVar (of tkinter heritage) -- the variable used to mediate processing progress with a value  between 0 and 0.
         progressvar is also used to signal breaks by setting it to -1
+      refspec=None: the actual reference spectrum data
+        if not None, filename1 and refspecno will not be used 
+      refspecname='RefenceSpectrum': name of the refrence spectrum given in refspec
     this function can be called separately from the commandline 
     """
     
-    # read reference data and interpolate to hyperspectral bands 
-    leafspectra = np.loadtxt(filename1)        
-    # first column in leafspectra is wavelengths
-    wl_spec = leafspectra[:,0]
-    # which spectra should we use by default?
-    refspec = leafspectra[ :, refspecno+1 ] # first column is wl, hence the "+1" 
+    if refspec is None:
+        # read reference data and interpolate to hyperspectral bands 
+        leafspectra = np.loadtxt(filename1)        
+        # first column in leafspectra is wavelengths
+        wl_spec = leafspectra[:,0]
+        # which spectra should we use by default?
+        refspec = leafspectra[ :, refspecno+1 ] # first column is wl, hence the "+1" 
         
-    # get spectrum name from filename1
-    # read first line assuming it contain tab-delimeted column headings
-    with open(filename1) as f:
-        refspectranames = f.readline().strip().split('\t')
-        if refspectranames[0][0] != "#":
-            # names not given on first line
-            refspectranames = list(range(len(refspectranames)))
-    refspecname = refspectranames[ refspecno+1 ] # first column is wl, hence the "+1"
+        # get spectrum name from filename1
+        # read first line assuming it contain tab-delimeted column headings
+        with open(filename1) as f:
+            refspectranames = f.readline().strip().split('\t')
+            if refspectranames[0][0] != "#":
+                # names not given on first line
+                refspectranames = list(range(len(refspectranames)))
+        refspecname = refspectranames[ refspecno+1 ] # first column is wl, hence the "+1"
     
     if file2_handle==None :
         # note:checking only the file handle. If file is opened, file2_datahandle is a matrix (and cannot be compared with None)
@@ -71,12 +77,7 @@ def p_processing( filename1, refspecno, wl_p, filename2, filename3, tkroot=None,
         hypdata_map = file2_datahandle
         print(filename2+" is already open, using the provided handles.")
     
-    # wavelengths should be in metadata
-    # if not, the program has no way to run, so let it crash
-    wl_hyp = np.array(hypdata.metadata['wavelength'],dtype='float')
-    if wl_hyp.max() < 100:
-        # in microns, convert to nm
-        wl_hyp *= 1000
+    wl_hyp = tools.hypdatatools_img.get_wavelengths( filename2, hypdata )
 
     # interpolate refspec to hyperspectral bands
     # np.interp does not check that the x-coordinate sequence xp is increasing. If xp is not increasing, the results are nonsense. A simple check for increasing is:
