@@ -1,5 +1,5 @@
 # AIROBEST
-Repository for AIROBEST project
+Repository for AIROBEST project's PyTorch based DCNN code
 
 ### Getting started
 Make sure to install all the requirements, run: `module load pytorch/1.3.1 ; pip install -r requirements.txt --user`
@@ -18,7 +18,7 @@ The following instruction assumes your current directory is `$PATH_TO_AIROBEST_C
 If you want to see real-time visualization, you must start `visdom` server first.
 
 **How to keep visom server running while waiting for submitted batch job to start?**
-- Log in to Puhti using local forwarding: `ssh -L 8097:127.0.0.1:8097 username@puhti-gpu.csc.fi`
+- Log in to Puhti using local forwarding: `ssh -L 8097:127.0.0.1:8097 username@puhti.csc.fi`
 - Open tmux session by running: `tmux`
 - cd to project folder: `cd $PATH_TO_AIROBEST_CODE/source/cnn`
 - Start visdom server: `bash server.sh`
@@ -32,4 +32,4 @@ Training configurations:
 
 For other options, run: `python train.py -h` for detailed explanation.
 
-Visualization can be seen by opening [http://localhost:8097/](http://localhost:8097/) from web browser. You first need to login on Puhti with local forwarding: `ssh -L 8097:127.0.0.1:8097 username@puhti-gpu.csc.fi`
+Visualization can be seen by opening [http://localhost:8097/](http://localhost:8097/) from web browser. You first need to login on Puhti with local forwarding: `ssh -L 8097:127.0.0.1:8097 username@puhti.csc.fi`
