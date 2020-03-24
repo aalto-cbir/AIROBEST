@@ -302,12 +302,14 @@ mvdata_map = mvdata.open_memmap( writable=True )
 ii = 0 # Note to self: unclear why ii is necessary, why not use i_zip?
 # loop over all data to be saved in the raster
 for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
-    # convert data inoto a integer-encodable format
-    
+    # convert data into a integer-encodable format        
     # create a memory shapefile with the field for rasterization
     data_converted = data
     # do some naecessary transformations for the data to store in integer format
-    if name == "developmentclass":
+    if name=="soiltype":
+        print("Simplifying soil classification to 0:mineral/1:organic.")
+        data_converted = [ 1 if (i>59 and i<70) else 0 for i in data ]
+    elif name == "developmentclass":
         # this includes strings
         unique_devclasses = [ i for i in set( data ) if i is not "" ] # exclude empty string
         unique_devclasses.insert( 0, "" ) #  insert empty string in the beginning, so it gets code 0
@@ -327,7 +329,7 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
         # change None to zero
         data_converted = [ i if i is not None else 0 for i in data  ]
         # merge "other broadleaves" (with values above 3) with birch (3)
-        data_converted = [ i if i < 4 else 3 for i in data  ]
+        data_converted = [ i if i < 4 else 3 for i in data_converted  ]
         print(" converting other tree species to birch")
     elif name == "basalarea":
         data_converted = [ int(i*100) for i in data ]
