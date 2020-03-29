@@ -510,6 +510,7 @@ def create_raster_like(envifile, outfilename, Nlayers=1, outtype=4, interleave=N
     metadata['samples'] = hypdata.ncols
     metadata['bands'] = Nlayers
     metadata['data type'] = outtype
+    metadata['byte order'] = 0 # Host Intel, LSF, set in "byteorder=0" of envi.create_image
 
     metadata['data ignore value'] = "0"
 
@@ -526,7 +527,8 @@ def create_raster_like(envifile, outfilename, Nlayers=1, outtype=4, interleave=N
 
     localprintcommand(functionname + " creating file " + outfilename)
 
-    outdata = envi.create_image(outfilename, metadata=metadata, interleave=interleave, ext='', force=force)
+    outdata = envi.create_image(outfilename, metadata=metadata, interleave=interleave, 
+        ext='', byteorder=0, force=force)
     outdata_map = outdata.open_memmap(writable=True)
 
     if fill_black:

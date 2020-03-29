@@ -270,7 +270,7 @@ outnames = fieldnames_in[ 1: ] + outlist_extranames
 for i,j in enumerate( outlist[0] ):
     outlist[1][i] = outlist[1][i].Buffer(-10)
 
-mvdata = tools.hypdatatools_gdal.create_raster_like( filename_AISA, filename_newraster , Nlayers=len(outfeatures), outtype=3, interleave='bip',
+mvdata = tools.hypdatatools_img.create_raster_like( filename_AISA, filename_newraster , Nlayers=len(outfeatures), outtype=3, interleave='bip',
     force=True, description="Standlevel forest variable data from Metsakeskus geopackages" ) # outtypes 2=int, 3=long
 mvdata_map = mvdata.open_memmap( writable=True )
 
@@ -283,8 +283,8 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     data_converted = data
     # do some necessary transformations for the data to store in integer format
     if name=="soiltype":
-        print("Simplifying soil classification to 0:mineral/1:organic.")
-        data_converted = [ 1 if (i>59 and i<70) else 0 for i in data ]
+        print("Simplifying soil classification to 1:mineral/2:organic.")
+        data_converted = [ 2 if (i>59 and i<70) else 1 for i in data ]
         outnames[i_zip] = "soil_class"
     elif name == "main_tree_species":
         # change None to zero
@@ -324,5 +324,6 @@ mvdata_map = None
 # mvdata = None
 
 # headers are apparently currently not updated by Spectral Python. Do it manually!
+tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'byte order', 0)
 tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'band names', outnames )
 
