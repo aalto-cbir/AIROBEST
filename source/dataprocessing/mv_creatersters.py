@@ -9,7 +9,6 @@ You should have received a copy of the GNU General Public License along with thi
 Rasterizes Finnish Forestry Center standwise data
 
 """
-# os.chdir( os.path.expanduser('~/python'))
 import numpy as np
 import spectral
 import spectral.io.envi as envi
@@ -17,151 +16,93 @@ import matplotlib.pyplot as plt
 import time
 import os
 import datetime
+import sqlite3
 
 # load the hyperspectral functions -- not yet a package
 #   add the folder with these functions to python path
 import sys
-# AIROBEST_dir = "../.." # path to AIROBEST folder
-AIROBEST_dir = 'hyperspectral\\AIROBEST'
+# this script is in source/dataprocessing subfolder, include project root
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 
-if not AIROBEST_dir in sys.path:
-    sys.path.append(AIROBEST_dir)
-# sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-
-from tools.hypdatatools_img import *
-from tools.hypdatatools_gdal import *
+import tools.hypdatatools_img
+import tools.hypdatatools_gdal
 import tools.borealallometry
 
-filenames_mv = [ "MV_Juupajoki.gpkg", "MV_Ruovesi.gpkg" ]
-# datafolder_mv = "/homeappl/home/mottusma/data"
-datafolder_mv = "D:/mmattim/wrk/hyytiala-D/mv"
-
-hypdatafolder = 'D:/mmattim/wrk/hyytiala-D/AISA2017'
-# hypdatafolder = '/homeappl/home/mottusma/project_deepsat/hyperspectral'
+# input files: gpkg files with FFC data, hyperspectral image
+filenames_FFC = ['MV_Juupajoki.gpkg', 'MV_Ruovesi.gpkg' ]
+datafolder_FFC = 'F:\AIROBEST'
+hypdatafolder = 'F:\AIROBEST'
 hyperspectral_filename = '20170615_reflectance_mosaic_128b.hdr' 
 
-outfolder = 'D:/mmattim/wrk/hyytiala-D/temp'
-# outfolder = hypdatafolder
-filename_newraster = os.path.join( outfolder, "forestdata")
+# output
+outfolder = 'F:\AIROBEST'
+filename_newraster = os.path.join( outfolder, 'forestdata')
 
 # Fill in species-specific STAR and slw
+# vectors over species: 1=pine, 2=spruce, 3=birch
+# STAR[0],slw[0] will remain None
 STAR = [None]*4
 slw = [None]*4
 for i in range( 1, 4 ):
-    # STAR[0],slw[0] will remain None
     STAR[i] = tools.borealallometry.STAR( i )
     slw[i] = tools.borealallometry.slw( i )
 
 # -----------------------------------------------------
-# read metsäkeskus geopackages
+# read FFC geopackages
 # rasterize the selected data layers based on an already existing raster
 #     existing raster is only used for defining the output geometry
 # see code for details on which layers are rasterized
 #   (the rasterized variables names area also printed out)
 
-fieldnames_in = [ 'standid', 'fertilityclass', 'soiltype' , 'developmentclass' ] 
-    # maintreespecies in treestandsummary is not trustworthy -- it is often empty
-
+# which fields can be read directly from the files
+fieldnames_in = [ 'standid', 'fertilityclass', 'soiltype' ] 
 
 outlist = [ [], [] ] + [ [] for i in fieldnames_in ] # geometries and other data from the standid table
+#   reserve two front locations in outlist for FID and geometry
+# Not all data can be read directly. These will be added to outlist_extra later, and merged before saving  
 outlist_extra = [] # data combined from other data tables (list of lists)
 outlist_extranames = [] # names of the variables in outlist_extra
 
-for fi in filenames_mv:
-    filename_mv = os.path.join( datafolder_mv, fi ) 
-    outlist_i = ( vector_getfeatures( filename_mv, fieldnames_in ) )
-    # outlist contains n+2 sublists: FID, geometries, standid, fertilityclass, etc
+filename_AISA = os.path.join(hypdatafolder,hyperspectral_filename)
+# Loop over the FFC data files and collect required data into outlist_extra
+# NOTE: data will be saved in outlist_extra in the order they are stored in outlist_extra
+for fi in filenames_FFC:
+    filename_mv = os.path.join( datafolder_FFC, fi ) 
+    outlist_i = ( tools.hypdatatools_gdal.vector_getfeatures( filename_mv, fieldnames_in ) )
+    # outlist contains n+2 sublists: FID, geometries + the fields specified in fieldnames_in
     geomlist_i = outlist_i[1]
     
-    filename_AISA = os.path.join(hypdatafolder,hyperspectral_filename)
-    i_stand = geometries_subsetbyraster( geomlist_i, filename_AISA, reproject=False )
-        # reproject=False speeds up processing, otherwise each geometry would be individually reprojected prior to testing
+    i_stand = tools.hypdatatools_gdal.geometries_subsetbyraster( geomlist_i, filename_AISA, reproject=False )
+    # reproject=False speeds up processing, otherwise each geometry would be individually reprojected prior to testing
     print("{:d} features (of total {:d}) found within raster {}".format( len(i_stand), len(geomlist_i), filename_AISA ) )
 
-    # save to the big outlist
+    # save to the big outlist all data which are inside the hyperspectral image
     for l,i in zip(outlist,outlist_i):
         l += [ i[ii] for ii in i_stand ]
 
     # get the stand ids which are inside the AISA data
-    #  this data has already been appended to outlist, standids_i is for local use, looking up datain other tables
+    #     this data has already been appended to outlist, 
+    #     standids_i is for local use, looking up datain other tables
     standids_i = [ outlist_i[2][i] for i in i_stand ]
-    
+    # generate treestandid from standid. For the data modeled to beginning of 2018,  it should be 2000000000+standid
+    tsids_i = [ i + 2000000000 for i in standids_i ]
+
+    # Get all other required information and store it in outlist_extra
     # open the data table and keep it open for a while
     conn = sqlite3.connect( filename_mv )
     c = conn.cursor()
     
-    # -------  search for possible alterations in operations table
-    # many of these are suggested operations with operationstate=0. (proposalyear, however, can be in the past) 
-    # ignore these with operationstate=1
-    q=geopackage_getspecificvalues1(c,"operation","completiondate",standids_i,"standid",additionalconstraint=" and operationstate = 1 ")
-    # some plots have more than one operation. Get the latest
-    #  XXX Can we be sure that the last is the latest? it may be best to convert text to date and check explicitly XXX 
-    operationdate_latest = [ i[-1][0] if len(i)>0 else None for i in q ]
-    
     listcounter = 0 # count how many elements are already in outlist_extra
     
-    if len(outlist_extra) < listcounter + 1 :
-        outlist_extra.append( operationdate_latest )
-        outlist_extranames.append( "operationdate_latest" )
-    else:
-        outlist_extra[listcounter] += operationdate_latest
-    listcounter += 1
-        
-    # -------- basalarea from treestandsummary [float] 
-    # generate treestandid from standid. For the data modeled to beginning of 2018,  it should be 2000000000+standid
-    tsids_i = [ i + 2000000000 for i in standids_i ]
-    q=geopackage_getspecificvalues1(c,"treestandsummary","basalarea",tsids_i,"treestandid")
-    #unpack data from list
-    basalarea = [ i[0][0] if len(i)>0 else 0 for i in q ]
-    if len(outlist_extra) < listcounter + 1 :
-        outlist_extra.append( basalarea )
-        outlist_extranames.append( "basalarea" )
-    else:
-        outlist_extra[listcounter] += basalarea
-    listcounter += 1
-    # -------- meanage from treestandsummary [integer]
-    q=geopackage_getspecificvalues1(c,"treestandsummary","meanage",tsids_i,"treestandid")
-    meanage = [ i[0][0] if len(i)>0 else 0 for i in q ]
-    if len(outlist_extra) < listcounter + 1 :
-        outlist_extra.append( meanage )
-        outlist_extranames.append( "meanage" )
-    else:
-        outlist_extra[listcounter] += meanage
-    listcounter += 1
-    # -------- stemcount from treestandsummary [integer]
-    q=geopackage_getspecificvalues1(c,"treestandsummary","stemcount",tsids_i,"treestandid")
-    stemcount = [ i[0][0] if len(i)>0 else 0 for i in q ]
-    if len(outlist_extra) < listcounter + 1 :
-        outlist_extra.append( stemcount )
-        outlist_extranames.append( "stemcount" )
-    else:
-        outlist_extra[listcounter] += stemcount
-    listcounter += 1    
-    # -------- meanheight from treestandsummary [float] 
-    q=geopackage_getspecificvalues1(c,"treestandsummary","meanheight",tsids_i,"treestandid")
-    meanheight = [ i[0][0] if len(i)>0 else 0 for i in q ]
-    if len(outlist_extra) < listcounter + 1 :
-        outlist_extra.append( meanheight )
-        outlist_extranames.append( "meanheight" )
-    else:
-        outlist_extra[listcounter] += meanheight
-    listcounter += 1    
-    # -------- number of tree strata from treestratum [integer]
-    q_basal=geopackage_getspecificvalues1(c,"treestratum","basalarea",tsids_i,"treestandid")
-    # q_basal will also be used later
-    N_strata = [ len(i) for i in q_basal ]
-    if len(outlist_extra) < listcounter + 1 :
-        outlist_extra.append( N_strata )
-        outlist_extranames.append( "N_strata" )
-    else:
-        outlist_extra[listcounter] += N_strata
-    listcounter += 1    
-    # -------- main species, and percentage of mean species in basalarea from treestratum [integer]
-    #                            percentages of pine, spruce and broadleaf [integer]
+    # -------- main species 
+    # compute also and percentage of pine, spruce and broadleaf, these will be stored later
     #
-    q_species=geopackage_getspecificvalues1(c,"treestratum","treespecies",tsids_i,"treestandid")
+    q=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestandsummary","basalarea",tsids_i,"treestandid")
+    # unpack data from list
+    basalarea = [ i[0][0] if len(i)>0 else 0 for i in q ]
+    q_species=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestratum","treespecies",tsids_i,"treestandid")
     # q_species will be used later
-    percentage_mainspecies = []
+    q_basal=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestratum","basalarea",tsids_i,"treestandid")
     maintreespecies = []
     percentage_pine = []
     percentage_spruce = []
@@ -171,14 +112,13 @@ for fi in filenames_mv:
             basalareas = [ i[0] for i in qi ]
             if sum( basalareas ) > 0:
                 species = [ i[0] for i in q1i ]
-                # first, find main species. find all species present and find the basal area for each
                 uniquespecies = list( set(species) )
                 basalarea_uniquespecies = [ sum( [ ba_k for ba_k,sp_k in zip(basalareas,species) if sp_k==sp_j ] ) for sp_j in uniquespecies ]
+                sumbasalareas = sum(basalareas)
+                # first, find main species. find all species present and find the basal area for each
                 i_main = basalarea_uniquespecies.index( max(basalarea_uniquespecies) )
                 basalarea_mainspecies = basalarea_uniquespecies[ i_main ] 
                 maintreespecies.append( uniquespecies[ i_main ] )
-                sumbasalareas = sum(basalareas)
-                percentage_mainspecies.append( int( basalarea_mainspecies / sumbasalareas * 100 ) )
                 # percentages by species
                 if 1 in uniquespecies:
                     percentage_pine.append( int( basalarea_uniquespecies[ uniquespecies.index( 1 ) ] / sumbasalareas * 100 ) )
@@ -197,49 +137,93 @@ for fi in filenames_mv:
                     percentage_broadleaf.append( 0 )
             else:
                 maintreespecies.append( 0 )
-                percentage_mainspecies.append( 0 )
                 percentage_pine.append( 0 )
                 percentage_spruce.append( 0 )
                 percentage_broadleaf.append( 0 )
         else:
             maintreespecies.append( 0 )
-            percentage_mainspecies.append( 0 )
             percentage_pine.append( 0 )
             percentage_spruce.append( 0 )
             percentage_broadleaf.append( 0 )
     if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( maintreespecies )
-        outlist_extranames.append( "maintreespecies" )
-        outlist_extra.append( percentage_mainspecies )
-        outlist_extranames.append( "percentage_mainspecies" )
-        outlist_extra.append( percentage_pine)
-        outlist_extranames.append( "percentage_pine" )
-        outlist_extra.append( percentage_spruce )
-        outlist_extranames.append( "percentage_spruce" )
-        outlist_extra.append( percentage_broadleaf )
-        outlist_extranames.append( "percentage_broadleaf" )
+        outlist_extranames.append( "main_tree_species" )
     else:
         outlist_extra[listcounter] += maintreespecies
-        outlist_extra[listcounter+1] += percentage_mainspecies
-        outlist_extra[listcounter+2] += percentage_pine
-        outlist_extra[listcounter+3] += percentage_spruce
-        outlist_extra[listcounter+4] += percentage_broadleaf
-    listcounter += 5
+    listcounter += 1
+
+    # -------- basalarea from treestandsummary [float] 
+    q=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestandsummary","basalarea",tsids_i,"treestandid")
+    # unpack data from list
+    basalarea = [ i[0][0] if len(i)>0 else 0 for i in q ]
+    if len(outlist_extra) < listcounter + 1 :
+        outlist_extra.append( basalarea )
+        outlist_extranames.append( "basal_area" )
+    else:
+        outlist_extra[listcounter] += basalarea
+    listcounter += 1
+    
+    # -------- dbh from treestandsummary [float]
+    q=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestandsummary","meandiameter",tsids_i,"treestandid")
+    dbh = [ i[0][0] if len(i)>0 else 0 for i in q ]
+    if len(outlist_extra) < listcounter + 1 :
+        outlist_extra.append( dbh )
+        outlist_extranames.append( "mean_dbh" )
+    else:
+        outlist_extra[listcounter] += dbh
+    listcounter += 1 
+    
+    # -------- stem density from treestandsummary [integer]
+    q=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestandsummary","stemcount",tsids_i,"treestandid")
+    stemcount = [ i[0][0] if len(i)>0 else 0 for i in q ]
+    if len(outlist_extra) < listcounter + 1 :
+        outlist_extra.append( stemcount )
+        outlist_extranames.append( "stem_density" )
+    else:
+        outlist_extra[listcounter] += stemcount
+    listcounter += 1
+
+    # -------- mean height from treestandsummary [float] 
+    q=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestandsummary","meanheight",tsids_i,"treestandid")
+    meanheight = [ i[0][0] if len(i)>0 else 0 for i in q ]
+    if len(outlist_extra) < listcounter + 1 :
+        outlist_extra.append( meanheight )
+        outlist_extranames.append( "mean_height" )
+    else:
+        outlist_extra[listcounter] += meanheight
+    listcounter += 1      
+
+    # -------- percentage of pine, spruce and broadleaf [integer]
+    #  these were calculated already earlier together with main tree species
+    if len(outlist_extra) < listcounter + 1 :
+        outlist_extra.append( percentage_pine)
+        outlist_extranames.append( "percentage_of_pine" )
+        outlist_extra.append( percentage_spruce )
+        outlist_extranames.append( "percentage_of_spruce" )
+        outlist_extra.append( percentage_broadleaf )
+        outlist_extranames.append( "percentage_of_birch" )
+    else:
+        outlist_extra[listcounter+0] += percentage_pine
+        outlist_extra[listcounter+1] += percentage_spruce
+        outlist_extra[listcounter+2] += percentage_broadleaf
+    listcounter += 3
+
     # -------- woody (branch+stem) biomass from treestandsummary [integer] 
-    q1=geopackage_getspecificvalues1(c,"treestandsummary","stembiomass",tsids_i,"treestandid")
-    q2=geopackage_getspecificvalues1(c,"treestandsummary","branchbiomass",tsids_i,"treestandid")
+    q1=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestandsummary","stembiomass",tsids_i,"treestandid")
+    q2=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestandsummary","branchbiomass",tsids_i,"treestandid")
     stembiomass = [ i[0][0] if len(i)>0 else 0 for i in q1 ]
     branchbiomass = [ i[0][0] if len(i)>0 else 0 for i in q2 ]
     woodybiomass = [ round(sb+bb) for sb,bb in zip(stembiomass,branchbiomass) ]
     if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( woodybiomass )
-        outlist_extranames.append( "woodybiomass" )
+        outlist_extranames.append( "woody_biomass" )
     else:
         outlist_extra[listcounter] += woodybiomass
-    listcounter += 1    
+    listcounter += 1
+
     # -------- LAI from treestratum [float] and effective LAI corrected for shootlevel clumping [float]
     # sum over all strata and use specific leaf weight for each species to get LAI
-    q=geopackage_getspecificvalues1(c,"treestratum","leafbiomass",tsids_i,"treestandid")
+    q=tools.hypdatatools_gdal.geopackage_getspecificvalues1(c,"treestratum","leafbiomass",tsids_i,"treestandid")
     # assume leaf biomass is given as tons / ha = 1000 kg / 10,000 m2 = kg / (10 m2)
     #     = 100 g / m2
     LAI = []
@@ -264,37 +248,29 @@ for fi in filenames_mv:
             LAI_effective.append( 0 )
     if len(outlist_extra) < listcounter + 1 :
         outlist_extra.append( LAI )
-        outlist_extranames.append( "LAI" )
+        outlist_extranames.append( "leaf_area_index" )
         outlist_extra.append( LAI_effective )
-        outlist_extranames.append( "LAI_effective" )
+        outlist_extranames.append( "effective_leaf_area_index" )
     else:
         outlist_extra[listcounter] += LAI
         outlist_extra[listcounter+1] += LAI_effective
     listcounter += 2
-    
-    # -------- dbh from treestandsummary [float]
-    q=geopackage_getspecificvalues1(c,"treestandsummary","meandiameter",tsids_i,"treestandid")
-    dbh = [ i[0][0] if len(i)>0 else 0 for i in q ]
-    if len(outlist_extra) < listcounter + 1 :
-        outlist_extra.append( dbh )
-        outlist_extranames.append( "dbh" )
-    else:
-        outlist_extra[listcounter] += dbh
-    listcounter += 1   
 
     conn.close()
+
+# =====================================================
+# rasterize the data retrieved from FFC forestry data
+# data in outlist and outlist_extra are processed once more, scaled if needed and stored as integer
 
 # exclude first three colums (FID, geometries, standid) from saving as raster
 outfeatures = outlist[ 3: ] + outlist_extra 
 outnames = fieldnames_in[ 1: ] + outlist_extranames
 
-# Discard border pixels: buffer the stands by -5 m
+# Discard border pixels: buffer the stands by -10 m
 for i,j in enumerate( outlist[0] ):
-    outlist[1][i] = outlist[1][i].Buffer(-5)
+    outlist[1][i] = outlist[1][i].Buffer(-10)
 
-# rasterize the data retrieved from forestry data
-
-mvdata = create_raster_like( filename_AISA, filename_newraster , Nlayers=len(outfeatures), outtype=3, interleave='bip',
+mvdata = tools.hypdatatools_gdal.create_raster_like( filename_AISA, filename_newraster , Nlayers=len(outfeatures), outtype=3, interleave='bip',
     force=True, description="Standlevel forest variable data from Metsakeskus geopackages" ) # outtypes 2=int, 3=long
 mvdata_map = mvdata.open_memmap( writable=True )
 
@@ -305,51 +281,36 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     # convert data into a integer-encodable format        
     # create a memory shapefile with the field for rasterization
     data_converted = data
-    # do some naecessary transformations for the data to store in integer format
+    # do some necessary transformations for the data to store in integer format
     if name=="soiltype":
         print("Simplifying soil classification to 0:mineral/1:organic.")
         data_converted = [ 1 if (i>59 and i<70) else 0 for i in data ]
-    elif name == "developmentclass":
-        # this includes strings
-        unique_devclasses = [ i for i in set( data ) if i is not "" ] # exclude empty string
-        unique_devclasses.insert( 0, "" ) #  insert empty string in the beginning, so it gets code 0
-        codes_devclasses = [ i for i in range(len( unique_devclasses ) )  ]
-        data_converted = [ codes_devclasses[ unique_devclasses.index( dd ) ] for dd in data ]
-    elif name == "operationdate_latest":
-        # save as integer from day 2000-1-1
-        day0 = datetime.datetime(2000,1,1).toordinal()
-        # nodatavalue = -32768
-        nodatavalue = 0 # it might be confusing and if the completion was really on 1-1-2000 this creates some confusion. But 0 is the DIV of the file
-        # replace 2000-01-01 2000-01-02 so not to have erroneous no data values
-        if '2000-01-01' in data:
-            data = [ '2000-01-02' if i=='2000-01-01' else i for i in data ]
-        data_converted=[ datetime.datetime.strptime( i, '%Y-%m-%d' ).toordinal()-day0 if i is not None else nodatavalue for i in data ]
-        outnames[i_zip] = name+"_[days_from_2000-01-01]"
-    elif name == "maintreespecies":
+        outnames[i_zip] = "soil_class"
+    elif name == "main_tree_species":
         # change None to zero
         data_converted = [ i if i is not None else 0 for i in data  ]
         # merge "other broadleaves" (with values above 3) with birch (3)
         data_converted = [ i if i < 4 else 3 for i in data_converted  ]
         print(" converting other tree species to birch")
-    elif name == "basalarea":
+    elif name == "basal_area":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"*100_[m2/ha]"
-    elif name == "meanheight":
+    elif name == "mean_height":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"_[cm]"        
-    elif name == "dbh":
+    elif name == "mean_dbh":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"*100_[cm]"
-    elif name == "LAI":
+    elif name == "leaf_area_index":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"*100"
-    elif name == "LAI_effective":
+    elif name == "effective_leaf_area_index":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"*100" 
                
     print("band {:d}: {} -- rasterizing... ".format( ii, name ), end ="" )
-    memshp = vector_newfile( outlist[1], { name:data_converted } )
-    memraster = vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype=int )
+    memshp = tools.hypdatatools_gdal.vector_newfile( outlist[1], { name:data_converted } )
+    memraster = tools.hypdatatools_gdal.vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype=int )
     # copy to envi file
     print(" saving... ", end="" )
     mvdata_map[:,:,ii] = memraster[:,:]
@@ -363,5 +324,5 @@ mvdata_map = None
 # mvdata = None
 
 # headers are apparently currently not updated by Spectral Python. Do it manually!
-envi_addheaderfield( filename_newraster, 'band names', outnames )
+tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'band names', outnames )
 

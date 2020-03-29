@@ -12,8 +12,6 @@ the functions here depend also on GDAL.
 import numpy as np
 import spectral
 import spectral.io.envi as envi
-# from tkinter import filedialog
-# from tkinter.scrolledtext import ScrolledText
 from tkinter import *
 import copy
 import os
@@ -32,13 +30,16 @@ GDAL_FIELD_TYPES_MAP = { int: gdal.GDT_Int16, float: gdal.GDT_Float32, "long":gd
 
 
 def get_rastergeometry( envihdrfilename, ignore_xystart=True, localprintcommand=None ):
-    """
-    Get the geometry (SpatialReference) of ENVI data file associated with envihdrfilename using GDAL
-    outputs: SpatialReference, Geotransform
-    envihdrfilename : the name with full path of ENVI .hdr file
+    """ Get the geometry (SpatialReference) of ENVI data file associated with envihdrfilename using GDAL
+    
+    Args:
+    envihdrfilename: the name with full path of ENVI .hdr file
     ignore_xystart: whether to ignore the 'x start' and 'y start' lines in the header file. GDAL ignores it,
         setting ignore_xystart=False would compensate for this ignorance. However, it seems that even files created by ENVI 
         have these set incorrectly (and 'x start' & 'y start' should be ignored)
+        
+    Returns:
+        SpatialReference, Geotransform
     """
     
     if localprintcommand is None:
@@ -74,23 +75,6 @@ def get_rastergeometry( envihdrfilename, ignore_xystart=True, localprintcommand=
             ystart = 1 # default value
     startvalues = ( xstart, ystart )
     
-    # (GT=GeoTrans): coefficients for transforming between pixel/line (P,L) raster space, and projection coordinates (Xp,Yp) space
-    # Xp = GT[0] + P*GT[1] + L*GT[2];
-    # Yp = GT[3] + P*GT[4] + L*GT[5];
-    # The inverse in the general case is  
-    # P = ( Xp*GT[5] - GT[0]*GT[5] + GT[2]*GT[3] - Yp*GT[2] ) / ( GT[1]*GT[5] - GT[2]*GT[4] )
-    # L = ( Yp*GT[1] - GT[1]*GT[3] + GT[0]*GT[4] - Xp*GT[4] ) / ( GT[1]*GT[5] - GT[2]*GT[4] )
-    # NOTE: ENVI files refer to pixels by their upper-left corner. It is more convenient to use pixel center coordinates
-    #   if the coordinates p and l are given relative to pixel centers, we get
-    # Xp = GT[0] + (p+0.5)*GT[1] + (l+0.5)*GT[2];
-    # Yp = GT[3] + (p+0.5)*GT[4] + (l+0.5)*GT[5];
-    # D = GT[1]*GT[5] - GT[2]*GT[4]
-    # p = ( Xp*GT[5] - GT[0]*GT[5] + GT[2]*GT[3] - Yp*GT[2] ) / D - 0.5
-    # l = ( Yp*GT[1] - GT[1]*GT[3] + GT[0]*GT[4] - Xp*GT[4] ) / D - 0.5
-    #
-    # Finally, x start and y start values need to be applied separately.
-    #
-    # print("Raster has geometry " + f1_SpatialReference.ExportToProj4() )
     return f1_SpatialReference, f1_GeoTrans, startvalues
     
 def world2image( envihdrfilename, pointmatrix ):
@@ -144,10 +128,10 @@ def shape2imagecoords( geometry, hypfilename, localprintcommand=None ):
 
     if C.GetGeometryName() == "POLYGON":
         # we need to get the outer ring which contains points.
-        #   Note: this ring (also a ogr.Geometry) lacks spatial reference -- get this from the polygon
+        #   Note: this ring (also an ogr.Geometry) lacks spatial reference -- get this from the polygon
         #   Some other geometries may also be potentially useful, see ??8.2.8 (page 66) of
         #   http://portal.opengeospatial.org/files/?artifact_id=25355
-        C = geometry.GetGeometryRef(0) # not to have side effects
+        C = geometry.GetGeometryRef(0) # create new geometry to not have unwanted side effects
         if C.GetSpatialReference() is None:
             C.AssignSpatialReference( geometry.GetSpatialReference() )
 
@@ -155,15 +139,10 @@ def shape2imagecoords( geometry, hypfilename, localprintcommand=None ):
     # print( "raster: "+SR_r.ExportToProj4() ) # XXX 
 
     SR_v = C.GetSpatialReference()
-    # print( "vector: "+SR_v.ExportToProj4() )
     # transform vector to raster coordinates
     vr_transform = osr.CoordinateTransformation( SR_v, SR_r )
     C.Transform( vr_transform )
     xy_w = np.array( C.GetPoints() ) # points in world coordinates
-    # transform to hyperspectral image coordinates
-    # D = GT[1]*GT[5] - GT[2]*GT[4]
-    # xy = np.array([ (xy_w[:,0]*GT[5] - GT[0]*GT[5] + GT[2]*GT[3] - xy_w[:,1]*GT[2] ) / D - 0.5 ,
-    #         ( xy_w[:,1]*GT[1] - GT[1]*GT[3] + GT[0]*GT[4] - xy_w[:,0]*GT[4] ) / D - 0.5] ).transpose()
     xy_i = world2image( hypfilename, xy_w )
     return xy_i
     
@@ -192,9 +171,7 @@ def loadpolygon( filename_shape , localprintcommand=None ):
     # find the first layer with some features
     for il in range(N_layers):
         sh_layer = sh_file.GetLayerByIndex(il)
-        # print( sh_layer.GetExtent() )
         sh_SpatialReference = sh_layer.GetSpatialRef()
-        # sh_f = sh_layer.GetFeature(0) #  The returned feature should be free with OGR_F_Destroy(). -- not done in Cookbook?
         sh_f = sh_layer.GetNextFeature() 
         while sh_f != None:
             sh_g = sh_f.GetGeometryRef()
@@ -223,19 +200,18 @@ def loadpolygon( filename_shape , localprintcommand=None ):
     return polygonlist
     
 def plot_vector( figurehandle, figuredatafile, geometry, color='r' ):
-    """
-    Plot the vector points in the geometry in the matplotlib raster windows already containing file figuredatafile. Reprojects XY
-    in:
+    """ Plot the vector points 
+    
+    Plot the vector points in the geometry in the matplotlib raster windows 
+    already containing file figuredatafile. Reprojects XY.
+    
+    Args:
         figurehandle: matplotlib figure handle, matplotlib.figure.Figure
         figuredatafile: file name of the raster plotted in the figure. Required to get figure coordinates.
         geometry is a polygon or the "ring" of a polygon, of type osgeo.ogr.Geometry
         color is a color in a format accepted by matplotlib
     """
     
-    # if localprintcommand is None:
-    #     # use a print command with no line feed in the end. The line feeds are given manually when needed.
-    #     localprintcommand = lambda x: print(x,end='')
-
     if geometry.GetGeometryName() == "MULTIPOLYGON":
         # call the function recursively for each sub-POLYGON
         for i in range( geometry.GetGeometryCount() ):
@@ -617,8 +593,8 @@ def vector_getfeatures( filename_in, fieldnames_in=None, layernumber=0, localpri
             If no names are given, just field IDs are retrieved
         layernumber: the number of the layer to get the field data from
     out: a list with at least two elements:
-        1) feature IDs
-        2) feature geometries
+        0) feature IDs
+        1) feature geometries
         if fieldnames_in is not None, followed by lists of field values (one list per field, each list has one element per feature)
          if a specific field does not exist, None is returned as value
     """
@@ -646,17 +622,11 @@ def vector_getfeatures( filename_in, fieldnames_in=None, layernumber=0, localpri
             fieldnumbers = [ fieldnames.index(x) if x in fieldnames else -1 for x in fieldnames_in ]
             
         for feature in sh_layer:
-            # Lauri saved geometries as strings-- likely he found it to be sufficiently robust, instead of copying the geometries
-            # we can get geometry back as follows:
-            # geom = ogr.CreateGeometryFromWkt( shapes[key] )
-            # however, it makes more sense to save just copies of geometries
-            # shapes[str(feature.GetField("standid"))] = str(feature.GetGeometryRef()) 
             geomlist.append( feature.GetGeometryRef().Clone() ) 
             FIDlist.append( feature.GetFID() )
             if fieldnames_in is not None:
                 for vl,fn in zip(valuelist,fieldnumbers):
                     vl.append( feature.GetField( fn ) if fn>-1 else None )
-        #print(len(FIDlist))
         outlist = [ FIDlist, geomlist ]
         # add the values for requested fields
         if fieldnames_in is not None:
