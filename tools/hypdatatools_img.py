@@ -510,7 +510,8 @@ def create_raster_like(envifile, outfilename, Nlayers=1, outtype=4, interleave=N
     metadata['samples'] = hypdata.ncols
     metadata['bands'] = Nlayers
     metadata['data type'] = outtype
-    metadata['byte order'] = 0 # Host Intel, LSF, set in "byteorder=0" of envi.create_image
+    # metadata['byte order'] = 0 # Host Intel, LSF, set in "byteorder=0" of envi.create_image
+    #   byte order will be set automatically
 
     metadata['data ignore value'] = "0"
 
