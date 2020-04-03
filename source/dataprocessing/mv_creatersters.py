@@ -283,6 +283,8 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     data_converted = data
     # do some necessary transformations for the data to store in integer format
     if name=="soiltype":
+        outnames[i_zip] = "fertility_class"
+    elif name=="soiltype":
         print("Simplifying soil classification to 1:mineral/2:organic.")
         data_converted = [ 2 if (i>59 and i<70) else 1 for i in data ]
         outnames[i_zip] = "soil_class"
@@ -307,7 +309,8 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     elif name == "effective_leaf_area_index":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"*100" 
-               
+    elif name == "woody_biomass":
+        outnames[i_zip] = "woody_biomass_[t/ha]" 
     print("band {:d}: {} -- rasterizing... ".format( ii, name ), end ="" )
     memshp = tools.hypdatatools_gdal.vector_newfile( outlist[1], { name:data_converted } )
     memraster = tools.hypdatatools_gdal.vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype=int )
