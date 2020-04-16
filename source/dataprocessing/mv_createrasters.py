@@ -284,9 +284,9 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     # create a memory shapefile with the field for rasterization
     data_converted = data
     # do some necessary transformations for the data to store in integer format
-    if name=="fertilityclass":
+    if name == "fertilityclass":
         outnames[i_zip] = "fertility_class"
-    elif name=="soiltype":
+    elif name == "soiltype":
         print("Simplifying soil classification to 1:mineral/2:organic.")
         data_converted = [ 2 if (i>59 and i<70) else 1 for i in data ]
         outnames[i_zip] = "soil_class"
@@ -330,6 +330,6 @@ mvdata.metadata['band names'] = outnames
 mvdata_map = None
 
 # headers are apparently currently not updated by Spectral Python. Do it manually!
-tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'byte order', 0)
+# tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'byte order', 0)
 tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'band names', outnames )
 
