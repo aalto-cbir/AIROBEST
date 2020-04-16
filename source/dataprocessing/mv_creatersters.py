@@ -1,12 +1,12 @@
 """
-Copyright (C) 2017,2018  Matti Mõttus 
+Copyright (C) 2018,2019,2020  Matti Mõttus 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 """
-Rasterizes Finnish Forestry Center standwise data
+Rasterizes Finnish Forestry Center standwise data to create TAIGA reference raster dataset.
 
 """
 import numpy as np
@@ -18,7 +18,8 @@ import os
 import datetime
 import sqlite3
 
-# load the hyperspectral functions -- not yet a package
+# load the hyperspectral functions -- not yet a module
+#   -- note: these should be soon available as part of spectralinvariants python module (on GitHub)
 #   add the folder with these functions to python path
 import sys
 # this script is in source/dataprocessing subfolder, include project root
@@ -29,14 +30,15 @@ import tools.hypdatatools_gdal
 import tools.borealallometry
 
 # input files: gpkg files with FFC data, hyperspectral image
+TAIGAdatafolder = 'F:\AIROBEST'
+hyperspectral_filename = 'TAIGA_20170615_reflectance_128b.hdr' 
+# these files are not part of TAIGA dataset, they are downloaded from https://metsaan.fi
 filenames_FFC = ['MV_Juupajoki.gpkg', 'MV_Ruovesi.gpkg' ]
 datafolder_FFC = 'F:\AIROBEST'
-hypdatafolder = 'F:\AIROBEST'
-hyperspectral_filename = '20170615_reflectance_mosaic_128b.hdr' 
 
 # output
-outfolder = 'F:\AIROBEST'
-filename_newraster = os.path.join( outfolder, 'forestdata')
+outfolder = TAIGAdatafolder
+filename_newraster = os.path.join( outfolder, 'forestdata_stands')
 
 # Fill in species-specific STAR and slw
 # vectors over species: 1=pine, 2=spruce, 3=birch
@@ -63,7 +65,7 @@ outlist = [ [], [] ] + [ [] for i in fieldnames_in ] # geometries and other data
 outlist_extra = [] # data combined from other data tables (list of lists)
 outlist_extranames = [] # names of the variables in outlist_extra
 
-filename_AISA = os.path.join(hypdatafolder,hyperspectral_filename)
+filename_AISA = os.path.join(TAIGAdatafolder,hyperspectral_filename)
 # Loop over the FFC data files and collect required data into outlist_extra
 # NOTE: data will be saved in outlist_extra in the order they are stored in outlist_extra
 for fi in filenames_FFC:
@@ -282,7 +284,7 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     # create a memory shapefile with the field for rasterization
     data_converted = data
     # do some necessary transformations for the data to store in integer format
-    if name=="soiltype":
+    if name=="fertilityclass":
         outnames[i_zip] = "fertility_class"
     elif name=="soiltype":
         print("Simplifying soil classification to 1:mineral/2:organic.")
@@ -294,6 +296,8 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
         # merge "other broadleaves" (with values above 3) with birch (3)
         data_converted = [ i if i < 4 else 3 for i in data_converted  ]
         print(" converting other tree species to birch")
+        # band name should end with "_class" for categorical variables
+        outnames[i_zip] = "main_tree_species_class"
     elif name == "basal_area":
         data_converted = [ int(i*100) for i in data ]
         outnames[i_zip] = name+"*100_[m2/ha]"
@@ -318,13 +322,12 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     print(" saving... ", end="" )
     mvdata_map[:,:,ii] = memraster[:,:]
     print("done")
-    ii+=1
+    ii += 1
 
 mvdata.metadata['band names'] = outnames
 
 # close envi files, this will also save all changes to data (but apparently not metadata)
 mvdata_map = None
-# mvdata = None
 
 # headers are apparently currently not updated by Spectral Python. Do it manually!
 tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'byte order', 0)
