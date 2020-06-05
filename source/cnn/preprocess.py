@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
     Pre-process hyperspectral data
@@ -6,7 +6,8 @@
 import argparse
 import os
 import sys
-
+import json
+import re
 import pandas as pd
 import numpy as np
 import spectral
@@ -21,67 +22,77 @@ from tools.hypdatatools_img import get_geotrans
 sys.stdout.flush()
 
 #datadir = '/proj/deepsat/hyperspectral'
-datadir = '/scratch/project_2001284/deepsat/hyperspectral'
+#datadir = '/scratch/project_2001284/hyperspectral'
 
 def parse_args():
     """ Parsing arguments """
     parser = argparse.ArgumentParser(
         description='preprocess.py',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-hyper_data_path',
+    parser.add_argument('--data_dir',
                         required=False, type=str,
-                        default=datadir+'/20170615_reflectance_mosaic_128b.hdr',
+                        default='.',
+                        help='Path to input data directory')
+    parser.add_argument('--hyperspec',
+                        required=False, type=str,
+                        default='<data_dir>/20170615_reflectance_mosaic_128b.hdr',
                         help='Path to hyperspectral data')
-    parser.add_argument('-forest_data_path',
+    parser.add_argument('--hyperspec_bands',
                         required=False, type=str,
-                        default=datadir+'/forestdata.hdr',
+                        default='0:120',
+                        help='Range of hyperspectral bands to use')
+    parser.add_argument('--forestdata',
+                        required=False, type=str,
+                        default='<data_dir>/forestdata.hdr',
                         help='Path to forest data')
-    parser.add_argument('-human_data_path',
+    parser.add_argument('--human_data_path',
                         required=False, type=str,
-                        default=datadir+'/Titta2013.txt',
+                        default='<data_dir>/Titta2013.txt',
                         help='Path to human verified data (Titta points)')
-    parser.add_argument('-save_dir',
+    parser.add_argument('--save_dir',
                         required=False, type=str,
-                        default='mosaic',
-                        help='Directory to save all generated files')
-    parser.add_argument('-src_file_name',
+                        default='.',
+                        help='Path to directory to save all generated files')
+    parser.add_argument('--src_file_name',
                         required=False, type=str,
-                        default='hyperspectral_src',
+                        default='<save_dir>/hyperspectral_src',
                         help='Save hyperspectral image with this name')
-    parser.add_argument('-tgt_file_name',
+    parser.add_argument('--tgt_file_name',
                         required=False, type=str,
-                        default='hyperspectral_tgt',
+                        default='<save_dir>/hyperspectral_tgt',
                         help='Save hyperspectral labels with this name')
-    parser.add_argument('-metadata_file_name',
+    parser.add_argument('--metadata_file_name',
                         required=False, type=str,
-                        default='metadata',
+                        default='<save_dir>/metadata',
                         help='Save metadata of the processed data with this name')
-    parser.add_argument('-normalize_method',
+    parser.add_argument('--normalize_method',
                         type=str,
-                        default='l2norm_along_channel', choices=['l2norm_along_channel', 'l2norm_channel_wise'],
+                        choices=['l2norm_along_channel', 'l2norm_channel_wise'],
+                        default='l2norm_along_channel',
                         help='Normalization method for input image')
-    parser.add_argument('-label_normalize_method',
+    parser.add_argument('--label_normalize_method',
                         type=str,
-                        default='clip', choices=['minmax_scaling', 'clip'],  # TODO: support z-score
+                        choices=['minmax_scaling', 'clip'],  # TODO: support z-score
+                        default='clip',
                         help='Normalization method for target labels')
-    parser.add_argument('-categorical_bands', nargs='+',
-                        required=False, default=[0, 1, 2, 9],
-                        help='List of band indices in the target labels for categorical tasks')
-    parser.add_argument('-ignored_bands', nargs='+',
+    parser.add_argument('--categorical_bands', type=str, nargs='+',
+                        required=False, default=[],
+                        help='List of categorical variables, defaults to all')
+    parser.add_argument('--ignored_bands', nargs='+',
                         required=False, default=[3, 8],
                         help='List of band indices in the target labels to ignore')
-    parser.add_argument('-ignore_zero_labels',
+    parser.add_argument('--ignore_zero_labels',
                         default=False, action='store_true',
                         help='Whether to ignore target labels with 0 values in data statistics')
-    parser.add_argument('-remove_bad_data', default=False, action='store_true',
+    parser.add_argument('--remove_bad_data', default=False, action='store_true',
                         help='Remove bad data from forest labels')
     opt = parser.parse_args()
-    opt.categorical_bands = list(map(int, opt.categorical_bands))
     opt.ignored_bands = list(map(int, opt.ignored_bands))
     return opt
 
 
-def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt, should_remove_bad_data):
+def get_hyper_labels(data_dir, hyper_image, forest_labels,
+                     hyper_gt, forest_gt, should_remove_bad_data):
     """
     Create hyperspectral labels from forest data
     :param hyper_image: W1xH1xC
@@ -97,12 +108,12 @@ def get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt, should_rem
     hyper_labels = np.array(forest_labels[r:(r+rows), c:(c+cols)])
 
     if should_remove_bad_data:
-        stand_id_data = spectral.open_image(datadir+'/standids_in_pixels.hdr')
-        stand_ids_full = stand_id_data.open_memmap()
+        stand_id_data    = spectral.open_image(data_dir+'/standids_in_pixels.hdr')
+        stand_ids_full   = stand_id_data.open_memmap()
         stand_ids_mapped = np.array(stand_ids_full[r:(r + rows), c:(c + cols)], dtype='int')  # shape RxCx1
         stand_ids_mapped = np.squeeze(stand_ids_mapped)  # remove the single-dimensional entries, size RxC
-        bad_stand_df = pd.read_csv(datadir+'/bad_stands.csv')
-        bad_stand_list = bad_stand_df['standid'].tolist()
+        bad_stand_df     = pd.read_csv(data_dir+'/bad_stands.csv')
+        bad_stand_list   = bad_stand_df['standid'].tolist()
         for stand_id in bad_stand_list:
             hyper_labels[stand_ids_mapped == stand_id] = 0
 
@@ -272,7 +283,8 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
     R, C, _ = labels.shape
 
     fig, axs = plt.subplots((len(categorical_bands) + 1) // 2, 2)
-
+    print(axs)
+    
     for i, b in enumerate(categorical_bands):
         band = labels[:, :, b]
         unique_values, unique_counts = np.unique(band, return_counts=True)
@@ -369,28 +381,57 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
 
 
 def main():
-    print('Start processing data...')
-    #######
+    """ Main function to read input files and produce output files. """
+
+    print('Starting to preprocess TAIGA hyperspectral and forest data...')
     options = parse_args()
-    print(options)
+    # print(options)
 
-    save_path = './data/%s' % options.save_dir
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    # only take the first 110 spectral bands, the rest are noisy
+    hyperspec_bands = options.hyperspec_bands
+    m = re.match('^(\d+):(\d+)$', hyperspec_bands)
+    assert m, 'hyperspec_bands value should be like 0:120'
+    hyperspec_bands = (int(m.group(1)), int(m.group(2)))
 
-    hyper_data = spectral.open_image(options.hyper_data_path)
-    hyper_gt = get_geotrans(options.hyper_data_path)
+    data_dir = options.data_dir
+    save_dir = options.save_dir
+    if save_dir[0]!='/' and save_dir[0]!='.':
+        save_dir = os.getcwd()+'/'+save_dir
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    hyperspec = options.hyperspec
+    if hyperspec[0]!='/' and hyperspec[0]!='.':
+        hyperspec = data_dir+'/'+hyperspec
+    
+    print('  data_dir         =', data_dir)
+    print('  save_dir         =', save_dir)
+    print('  hyperspec        =', hyperspec)
+    print('  hyperspec_bands  =', *hyperspec_bands)
+        
+    hyper_data  = spectral.open_image(hyperspec)
+    hyper_gt    = get_geotrans(hyperspec)
     hyper_image = hyper_data.open_memmap()
-    hyper_image = np.array(hyper_image[:, :, 0:110])  # only take the first 110 spectral bands, the rest are noisy
+    hyper_image = np.array(hyper_image[:, :, hyperspec_bands[0]:
+                                             hyperspec_bands[1]])  
     R, C, B = hyper_image.shape
+    print('  hyperspec.shape  =', R, C, B);
 
-    forest_data = spectral.open_image(options.forest_data_path)
-    forest_gt = get_geotrans(options.forest_data_path)
-    band_names = np.array(list(map(format_filename, forest_data.metadata['band names'])))
-    # forest_labels = torch.from_numpy(forest_data.open_memmap())  # shape: 11996x12517x17
-    forest_labels = forest_data.open_memmap()  # shape: 11996x12517x17
+    forestdata = options.forestdata
+    if forestdata[0]!='/' and forestdata[0]!='.':
+        forestdata = data_dir+'/'+forestdata
+    print('  forestdata       =', forestdata)
 
-    hyper_labels = get_hyper_labels(hyper_image, forest_labels, hyper_gt, forest_gt, options.remove_bad_data)
+    forest_data    = spectral.open_image(forestdata)
+    forest_bands   = json.loads('{'+forest_data.metadata['band descriptions']+'}');
+    forest_gt      = get_geotrans(forestdata)
+    band_names_raw = np.array(forest_data.metadata['band names'])
+    band_names     = np.array(list(map(format_filename, band_names_raw)))
+    forest_labels  = forest_data.open_memmap()
+    print('  forestdata.shape =', *forest_labels.shape);
+    
+    hyper_labels = get_hyper_labels(data_dir, hyper_image, forest_labels,
+                                    hyper_gt, forest_gt, options.remove_bad_data)
 
     # -----add labels for 3 more tasks-----
     mainspecies = ['percentage_spruce', 'percentage_pine', 'percentage_broadleaf']
@@ -409,10 +450,35 @@ def main():
         hyper_labels = np.concatenate((hyper_labels, new_task), axis=-1)
     # ----------
 
-    # Current categorical classes: fertilityclass (0), soiltype (1), developmentclass (2), maintreespecies (9)
-    cls_label_names = band_names[options.categorical_bands]
+    categorical_band_idxs = []
+    if options.categorical_bands:
+        for b in options.categorical_bands:
+            idx = np.asarray(band_names_raw==b).nonzero()[0]
+            assert idx>=0, 'Band "'+b+'" not in band names'
+            assert b in forest_bands, 'Band "'+b+'" not in band descriptions'
+            d = forest_bands[b]
+            assert d['type']=='categorial', 'Band "'+b+'" is not categorial'
+            categorical_band_idxs.append(idx[0])
+    else:
+        for b, d in forest_bands.items():
+            idx = np.asarray(band_names_raw==b).nonzero()[0]
+            assert idx>=0, 'Band "'+b+'" in band descriptions but not in names'
+            if d['type']=='categorial':
+                categorical_band_idxs.append(idx[0])
+
+    cls_label_names = band_names[categorical_band_idxs]
+    print('  categorical_bands: (total '+str(len(categorical_band_idxs))+')\n')
+    for i in range(len(categorical_band_idxs)):
+        name = cls_label_names[i]
+        desc = forest_bands[name]
+        print('    {:2} {} "{}"'.format(categorical_band_idxs[i], name, desc['name']))
+        for j, k in desc['values'].items():
+            print('      {:2} : {}'.format(j, k))
+        print()
+            
     reg_task_indices = np.array(range(hyper_labels.shape[-1]))
-    reg_task_indices = np.delete(reg_task_indices, np.append(options.categorical_bands, options.ignored_bands))
+    reg_task_indices = np.delete(reg_task_indices, np.append(categorical_band_idxs,
+                                                             options.ignored_bands))
     reg_label_names = band_names[reg_task_indices]
     n_reg_tasks = len(reg_task_indices)
     sum_pixels = np.sum(hyper_image, axis=-1)
@@ -420,22 +486,22 @@ def main():
     print('Zero count in image:', R, C, B, hyper_labels.shape, sum_pixels.shape, zero_count)
     hyper_labels[sum_pixels == 0] = 0
 
-    cls_labels = hyper_labels[:, :, options.categorical_bands]
+    cls_labels = hyper_labels[:, :, categorical_band_idxs]
 
     # Disable human data for now as there are only 19 Titta points in the map
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, band_names)
-    hyper_labels, metadata = process_labels(hyper_labels, options.categorical_bands, options.ignored_bands,
-                                            cls_label_names, reg_label_names, zero_count, save_path, options)
+    hyper_labels, metadata = process_labels(hyper_labels, categorical_band_idxs, options.ignored_bands,
+                                            cls_label_names, reg_label_names, zero_count, save_dir, options)
 
     print('Label visualization for classification tasks')
-    visualize_label(cls_labels, cls_label_names, save_path)
+    visualize_label(cls_labels, cls_label_names, save_dir)
     print('Label visualization for regression tasks')
-    visualize_label(hyper_labels[:, :, -n_reg_tasks:], reg_label_names, save_path)
+    visualize_label(hyper_labels[:, :, -n_reg_tasks:], reg_label_names, save_dir)
 
-    image_norm_name = '%s/image_norm_%s.pt' % (save_path, options.normalize_method)
-    tgt_name = '%s/%s.pt' % (save_path, options.tgt_file_name)
-    metadata_name = '%s/%s.pt' % (save_path, options.metadata_file_name)
-    src_name = '%s/%s.pt' % (save_path, options.src_file_name)
+    image_norm_name = '%s/image_norm_%s.pt' % (save_dir, options.normalize_method)
+    tgt_name = '%s/%s.pt' % (save_dir, options.tgt_file_name)
+    metadata_name = '%s/%s.pt' % (save_dir, options.metadata_file_name)
+    src_name = '%s/%s.pt' % (save_dir, options.src_file_name)
 
     metadata['cls_label_names'] = cls_label_names
     metadata['reg_label_names'] = reg_label_names
@@ -449,7 +515,7 @@ def main():
 
     wavelength = np.array(hyper_data.metadata['wavelength'], dtype=float)
 
-    save_as_rgb(hyper_image, wavelength, save_path)
+    save_as_rgb(hyper_image, wavelength, save_dir)
     # storing L2 norm of the image based on normalization method
     if options.normalize_method == 'l2norm_along_channel':  # l2 norm along *band* axis
         # norm = np.linalg.norm(hyper_image, axis=2)
