@@ -4,11 +4,10 @@ import sys
 import torch
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
-import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.metrics import roc_auc_score
 
-from input.utils import plot_largest_error_patches, plot_error_histogram, plot_pred_vs_target, \
-    export_error_points
+from input.utils import compute_accuracy, compute_cls_metrics, compute_reg_metrics
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from tools.hypdatatools_img import get_geotrans
@@ -37,6 +36,22 @@ class Trainer(object):
             os.makedirs(self.ckpt_path)
         if not os.path.exists(self.image_path):
             os.makedirs(self.image_path)
+
+    def compute_uncertainty_loss(self, task_loss):
+        """
+        Compute uncertainty loss
+        :param task_loss: a list contains loss for each task, classification loss first
+        :return: uncertainty loss
+        """
+        task_loss_cls = task_loss[:self.modelTrain.n_cls]
+        task_loss_reg = task_loss[-self.modelTrain.n_reg:]
+
+        cls_loss = torch.sum(
+            torch.exp(-self.modelTrain.log_sigma_cls) * task_loss_cls + self.modelTrain.log_sigma_cls / 2)
+        reg_loss = torch.sum(
+            0.5 * torch.exp(-self.modelTrain.log_sigma_reg) * task_loss_reg + self.modelTrain.log_sigma_reg / 2)
+
+        return cls_loss + reg_loss
 
     def train(self, train_loader, val_loader):
         epoch = self.options.epoch
@@ -82,8 +97,13 @@ class Trainer(object):
                 tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
 
                 task_loss, pred_cls, _ = self.modelTrain(src, tgt_cls, tgt_reg)
-                weighted_task_loss = self.modelTrain.task_weights * task_loss
-                loss = torch.sum(weighted_task_loss)
+
+                if self.options.loss_balancing == 'uncertainty':
+                    loss = self.compute_uncertainty_loss(task_loss)
+                    # loss = torch.sum(task_loss)
+                else:
+                    weighted_task_loss = self.modelTrain.task_weights * task_loss
+                    loss = torch.sum(weighted_task_loss)
 
                 if train_step == 0:
                     initial_task_loss = task_loss.data  # set L(0)
@@ -95,14 +115,15 @@ class Trainer(object):
 
                 # compute accuracy
                 if pred_cls.nelement() != 0:
-                    batch_train_accuracies, _, _ = self.compute_accuracy(pred_cls, tgt_cls)
+                    batch_train_accuracies, _, _ = compute_accuracy(pred_cls, tgt_cls, self.categorical)
                     train_accuracies += batch_train_accuracies
 
                 self.optimizer.zero_grad()
                 loss.backward(retain_graph=True)
 
                 # clear gradient of w_i(t) to update by GN loss
-                self.modelTrain.task_weights.grad.data.zero_()
+                if self.options.loss_balancing != 'uncertainty':
+                    self.modelTrain.task_weights.grad.data.zero_()
                 if self.options.loss_balancing == 'grad_norm':
                     # get layer of shared weights
                     W = self.modelTrain.get_last_shared_layer()
@@ -119,7 +140,7 @@ class Trainer(object):
                     # compute the mean norm \tilde{G}_w(t)
                     mean_norm = torch.mean(norms.data)
 
-                    alpha = 0.16
+                    alpha = 1.0
                     # compute the GradNorm loss
                     # this term has to remain constant
                     constant_term = (mean_norm * (inverse_train_rate ** alpha))
@@ -146,15 +167,27 @@ class Trainer(object):
                     # record
                     task_losses.append(task_loss.data.cpu().numpy())
                     loss_ratios.append(np.sum(task_losses[-1] / task_losses[0]))
-                    weights.append(self.modelTrain.task_weights.data.cpu().numpy())
+                    if self.options.loss_balancing == 'uncertainty':
+                        reg_weights = 0.5 * torch.exp(-self.modelTrain.log_sigma_reg)
+                        cls_weights = torch.exp(-self.modelTrain.log_sigma_cls)
+                        reg_weights = reg_weights.data.cpu().numpy()
+                        cls_weights = cls_weights.data.cpu().numpy()
+                        uncertainty_weights = np.concatenate((cls_weights, reg_weights))
+                        weights.append(uncertainty_weights)
+                    else:
+                        weights.append(self.modelTrain.task_weights.data.cpu().numpy())
                     grad_norm_losses.append(grad_norm_loss.data.cpu().numpy())
 
-                    print('Step {:<7}: loss = {:.5f}, average loss = {:.5f}, task loss = {}, weights= {}'
+                    print('Step {:<7}: loss = {:.5f}, average loss = {:.5f}, task loss = {}, weights= {}, uncertainty '
+                          'logvar: cls= {}, reg= {} '
                           .format(train_step,
                                   loss.item(),
                                   avg_losses[-1],
                                   " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())),
-                                  " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy()))))
+                                  " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
+                                  " ".join(map("{:.5f}".format, self.modelTrain.log_sigma_cls.data.cpu().numpy())),
+                                  " ".join(map("{:.5f}".format, self.modelTrain.log_sigma_reg.data.cpu().numpy()))
+                                  ))
 
                     if self.visualizer is not None:
                         loss_window = self.visualizer.line(
@@ -201,18 +234,18 @@ class Trainer(object):
 
                 train_step += 1
 
-            if e % self.save_every == 0 or e == self.options.epoch:
+            if e % self.save_every == 1 or e == self.options.epoch:
                 self.save_checkpoint(e, train_step, initial_task_loss)
             epoch_loss = epoch_loss / len(train_loader)
             if self.options.loss_balancing == 'grad_norm':
                 print('Epoch {:<3}: Total loss={:.5f}, gradNorm_loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'
-                    .format(e,
-                            loss.item(),
-                            grad_norm_loss.data.cpu().numpy(),
-                            " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
-                            " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
-                            " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
-                )
+                      .format(e,
+                              loss.item(),
+                              grad_norm_loss.data.cpu().numpy(),
+                              " ".join(map("{:.5f}".format, loss_ratio.data.cpu().numpy())),
+                              " ".join(map("{:.5f}".format, self.modelTrain.task_weights.data.cpu().numpy())),
+                              " ".join(map("{:.5f}".format, task_loss.data.cpu().numpy())))
+                      )
 
             if not self.options.no_classification:
                 train_accuracies = train_accuracies * 100 / len(train_loader.dataset)
@@ -228,7 +261,8 @@ class Trainer(object):
 
             metric = epoch_loss
             if val_loader is not None:
-                val_loss, val_avg_accuracy, val_accuracies, val_balanced_accuracies, conf_matrices = self.validate(e, val_loader)
+                val_loss, val_balanced_accuracies, val_avg_accuracy, val_accuracies, conf_matrices \
+                    = self.validate(e, val_loader)
                 print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
                       .format(val_loss, val_avg_accuracy.data.cpu().numpy(), val_accuracies.data.cpu().numpy()))
                 val_losses.append(val_loss)
@@ -274,6 +308,16 @@ class Trainer(object):
                     lr = param_group['lr']
                     break
             print('Current learning rate at epoch {}: {}'.format(e, lr))
+            print('===============================================')
+
+    @staticmethod
+    def multiclass_roc_auc_score(y_true, y_pred, average="macro"):
+        lb = LabelBinarizer()
+
+        lb.fit(y_true)
+        y_true = lb.transform(y_true)
+        y_pred = lb.transform(y_pred)
+        return roc_auc_score(y_true, y_pred, average=average)
 
     def validate(self, epoch, val_loader):
         # set model in validation mode
@@ -281,11 +325,9 @@ class Trainer(object):
         self.modelTrain.model.eval()
 
         sum_loss = 0
-        N_samples = len(val_loader.dataset)
         val_accuracies = torch.tensor([0.0] * len(self.categorical))  # treat all class uniformly
-        avg_accuracy = torch.tensor(0.0)
-        pred_cls_indices = torch.tensor([], dtype=torch.long)
-        tgt_cls_indices = torch.tensor([], dtype=torch.long)
+        pred_cls_logits = torch.tensor([], dtype=torch.float)
+        tgt_cls_logits = torch.tensor([], dtype=torch.float)
         all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
         all_tgt_reg = torch.tensor([], dtype=torch.float)  # on cpu
         data_indices = torch.tensor([], dtype=torch.long)
@@ -304,13 +346,9 @@ class Trainer(object):
 
                 sum_loss += loss.item()
                 if not self.options.no_classification:
-                    batch_accuracies, batch_pred_indices, batch_tgt_indices = self.compute_accuracy(batch_pred_cls, tgt_cls)
-                    # batch_pred_indices = batch_pred_indices.cpu()
-                    # batch_tgt_indices = batch_tgt_indices.cpu()
-                    val_accuracies += batch_accuracies
                     # concat batch predictions
-                    pred_cls_indices = torch.cat((pred_cls_indices, batch_pred_indices), dim=0)
-                    tgt_cls_indices = torch.cat((tgt_cls_indices, batch_tgt_indices), dim=0)
+                    pred_cls_logits = torch.cat((pred_cls_logits, batch_pred_cls.cpu()), dim=0)
+                    tgt_cls_logits = torch.cat((tgt_cls_logits, tgt_cls.cpu()), dim=0)
 
                 if not self.options.no_regression:
                     batch_pred_reg = batch_pred_reg.to(torch.device('cpu'))
@@ -318,117 +356,15 @@ class Trainer(object):
                     all_tgt_reg = torch.cat((all_tgt_reg, tgt_reg), dim=0)
                     all_pred_reg = torch.cat((all_pred_reg, batch_pred_reg), dim=0)
 
-        # return average validation loss
-
         average_loss = sum_loss / len(val_loader)
-        conf_matrices = []
-        if not self.options.no_classification:
-            val_accuracies = val_accuracies * 100 / N_samples
-            avg_accuracy = torch.mean(val_accuracies)
 
-            print('--Metrics--')
-            val_balanced_accuracies = []
-            for i in range(tgt_cls_indices.shape[-1]):
-                conf_matrix = confusion_matrix(tgt_cls_indices[:, i], pred_cls_indices[:, i])
-                # convert to percentage along rows
-                conf_matrix = conf_matrix / conf_matrix.sum(axis=1, keepdims=True)
-                conf_matrix = np.around(100 * conf_matrix, decimals=2)
-                conf_matrices.append(conf_matrix)
-                label_accuracy = np.around(np.mean(conf_matrix.diagonal()), decimals=2)
-                val_balanced_accuracies.append(label_accuracy)
-                print('---Task %s---' % i)
-                precision = precision_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
-                recall = recall_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
-                f1 = f1_score(tgt_cls_indices[:, i], pred_cls_indices[:, i], average='weighted')
-                print('Precision:', precision)
-                print('Recall:', recall)
-                print('F1 score', f1)
+        val_balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices = compute_cls_metrics(pred_cls_logits, tgt_cls_logits,
+                                                                                   self.options,
+                                                                                   self.categorical)
 
-            avg_balanced_accuracy = np.around(np.mean(val_balanced_accuracies), decimals=2)
-            print('Average balanced accuracy: %s, label accuracies: %s' % (avg_balanced_accuracy, val_balanced_accuracies))
-            print('-------------')
-        # scatter plot prediction vs target labels
-        if not self.options.no_regression:
-            if epoch % self.save_every == 0 or epoch == 1 or epoch == self.options.epoch:
-                n_reg = self.modelTrain.n_reg
-                coords = np.array(val_loader.dataset.coords)
-
-                cmap = plt.get_cmap('viridis')
-                colors = [cmap(i) for i in np.linspace(0, 1, n_reg)]
-                names = self.metadata['reg_label_names']
-
-                rmsq_errors = torch.abs(all_pred_reg - all_tgt_reg)
-
-                sum_errors = torch.sum(rmsq_errors, dim=1)
-                plot_error_histogram(sum_errors, 100, 'all_tasks', epoch, self.image_path)
-
-                k = N_samples // 10  # 10% of the largest error
-                value, indices = torch.topk(sum_errors, k, dim=0, largest=True, sorted=False)
-
-                topk_points = coords[indices]
-                task_label = self.hyper_labels_reg[:, :, 0]
-                # chose the first task label just for visualization
-                plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
-                                           'all_tasks', self.image_path, epoch)
-
-                export_error_points(coords, rmsq_errors, self.hypGt, sum_errors, names, epoch, self.ckpt_path)
-
-                for i in range(n_reg):
-                    x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
-
-                    plot_pred_vs_target(x, y, colors[i], names[i], self.image_path, epoch)
-
-                    # plot error histogram
-                    mse_errors = torch.abs(x - y)
-                    plot_error_histogram(mse_errors, 100, names[i], epoch, self.image_path)
-
-                    # plot top k largest errors on the map
-                    task_label = self.hyper_labels_reg[:, :, i]
-                    value, indices = torch.topk(mse_errors, k, dim=0, largest=True, sorted=False)
-
-                    topk_points = coords[indices]
-                    plot_largest_error_patches(task_label, topk_points, val_loader.dataset.patch_size,
-                                               names[i], self.image_path, epoch)
-
-        return average_loss, avg_accuracy, val_accuracies, val_balanced_accuracies, conf_matrices
-
-    def compute_accuracy(self, predict, tgt):
-        """
-        Return number of correct prediction of each tgt label
-        :param predict: tensor of predicted outputs
-        :param tgt: tensor of ground truth labels
-        :return: number of correct predictions for every single classification task
-        """
-
-        # reshape tensor in (*, n_cls) format
-        # this is mainly for LeeModel that output the prediction for all pixels
-        # from the source image with shape (batch, patch, patch, n_cls)
-        predict = predict.cpu()
-        tgt = tgt.cpu()
-
-        n_cls = tgt.shape[-1]
-        predict = predict.view(-1, n_cls)
-        tgt = tgt.view(-1, n_cls)
-        #####
-        pred_indices = []
-        tgt_indices = []
-        n_correct = torch.tensor([0.0] * len(self.categorical))
-        num_classes = 0
-        for idx, (key, values) in enumerate(self.categorical.items()):
-            count = len(values)
-            pred_class = predict[:, num_classes:(num_classes + count)]
-            tgt_class = tgt[:, num_classes:(num_classes + count)]
-            pred_index = pred_class.argmax(-1)  # get indices of max values in each row
-            tgt_index = tgt_class.argmax(-1)
-            pred_indices.append(pred_index)
-            tgt_indices.append(tgt_index)
-            true_positive = torch.sum(pred_index == tgt_index).item()
-            n_correct[idx] += true_positive
-            num_classes += count
-
-        pred_indices = torch.stack(pred_indices, dim=1)
-        tgt_indices = torch.stack(tgt_indices, dim=1)
-        return n_correct, pred_indices, tgt_indices
+        compute_reg_metrics(val_loader, all_pred_reg, all_tgt_reg, epoch, self.options, self.metadata,
+                            self.hyper_labels_reg, self.image_path, should_save=True, mode='validation')
+        return average_loss, val_balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices
 
     def save_checkpoint(self, epoch, train_step, initial_task_loss):
         """

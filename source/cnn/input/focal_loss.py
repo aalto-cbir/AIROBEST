@@ -11,6 +11,7 @@ class FocalLoss(nn.Module):
         self.focusing_param = focusing_param
         self.balance_param = balance_param
         self.weight = weight
+
         print('Weight:', weight)
 
     def forward(self, prediction, target):
@@ -21,4 +22,4 @@ class FocalLoss(nn.Module):
 
         balanced_focal_loss = self.balance_param * focal_loss
 
-        return balanced_focal_loss
+        return balanced_focal_loss.sum()
