@@ -3,8 +3,11 @@ import os
 
 import numpy as np
 import torch
+import torch.nn as nn
 
-from input.utils import remove_ignored_tasks, get_device, compute_cls_metrics, compute_reg_metrics
+from input.data_loader import get_loader
+from input.focal_loss import FocalLoss
+from input.utils import remove_ignored_tasks, get_device, compute_cls_metrics, compute_reg_metrics, compute_data_distribution
 from models.model import ChenModel, LeeModel, PhamModel, SharmaModel, HeModel, ModelTrain, PhamModel3layers, \
     PhamModel3layers2, PhamModel3layers3, PhamModel3layers4, PhamModel3layers5, PhamModel3layers6, PhamModel3layers7, \
     PhamModel3layers8, PhamModel3layers9, PhamModel3layers10
@@ -32,6 +35,8 @@ def parse_args():
 
 
 def infer(model, test_loader, device, options, metadata, hyper_labels_reg):
+    model.eval()
+
     pred_cls_logits = torch.tensor([], dtype=torch.float)
     tgt_cls_logits = torch.tensor([], dtype=torch.float)
     all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
@@ -45,7 +50,7 @@ def infer(model, test_loader, device, options, metadata, hyper_labels_reg):
         categorical = metadata['categorical']
 
         with torch.no_grad():
-            batch_pred_cls, batch_pred_reg = model(src)
+            task_loss, batch_pred_cls, batch_pred_reg = model(src, tgt_cls, tgt_reg)
 
             if not options.no_classification:
                 # concat batch predictions
@@ -90,12 +95,34 @@ def main():
 
     # remove ignored tasks
     hyper_labels_cls, hyper_labels_reg = remove_ignored_tasks(hyper_labels, options, metadata)
+    categorical = metadata['categorical']
     print('Metadata values', metadata)
     out_cls = metadata['num_classes']
     out_reg = hyper_labels_reg.shape[-1]
     R, C, num_bands = hyper_image.shape
-    test_set = np.load(options.data_split_path + '/test_set.npy')
+    test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
+
+    print('Data distribution on test set')
+    class_weights = compute_data_distribution(hyper_labels_cls, test_set, categorical)
+
+    # Model construction
     model_name = options.model
+
+    reduction = 'sum' if options.loss_balancing == 'uncertainty' else 'mean'
+    loss_reg = nn.MSELoss(reduction=reduction)
+
+    loss_cls_list = []
+
+    if options.class_balancing == 'cost_sensitive' or options.class_balancing == 'CRL':
+        for i in range(len(categorical.keys())):
+            loss_cls_list.append(nn.CrossEntropyLoss(weight=class_weights[i].to(device)))
+    elif options.class_balancing == 'focal_loss':
+        for i in range(len(categorical.keys())):
+            # loss_cls_list.append(FocalLoss(class_num=len(class_weights[i]), alpha=torch.tensor(class_weights[i]), gamma=2))
+            loss_cls_list.append(FocalLoss(balance_param=class_weights[i].to(device), weight=class_weights[i].to(device)))
+    else:
+        for i in range(len(categorical.keys())):
+            loss_cls_list.append(nn.CrossEntropyLoss())
 
     if model_name == 'ChenModel':
         model = ChenModel(num_bands, out_reg, metadata, patch_size=options.patch_size, n_planes=32)
@@ -143,8 +170,12 @@ def main():
                              patch_size=options.patch_size,
                              shuffle=True)
 
-    model = model.to(device)
-    infer(model, test_loader, device, options, metadata, hyper_labels_reg)
+    modelTrain = ModelTrain(model, loss_cls_list, loss_reg, metadata, options)
+    modelTrain = modelTrain.to(device)
+    if checkpoint is not None:
+        modelTrain.load_state_dict(checkpoint['model'])
+        
+    infer(modelTrain, test_loader, device, options, metadata, hyper_labels_reg)
 
 
 if __name__ == "__main__":
