@@ -192,15 +192,18 @@ def main():
 
     if os.path.isfile(options.data_split_path + '/train_set.npy') and os.path.isfile(options.data_split_path + '/val_set.npy'):
         print('Loading data split...')
-        train_set = np.load(options.data_split_path + '/train_set.npy')
-        val_set = np.load(options.data_split_path + '/val_set.npy')
+        train_set = np.load(options.data_split_path + '/train_set.npy', allow_pickle=True)
+        val_set = np.load(options.data_split_path + '/val_set.npy', allow_pickle=True)
+        test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
+        origin_set = np.load(options.data_split_path + '/origin_set.npy', allow_pickle=True)
     else:
-        train_set, test_set, val_set = split_data(R, C, mask, hyper_labels_cls, hyper_labels_reg, options.patch_size, options.patch_stride)
+        train_set, test_set, val_set, origin_set = split_data(R, C, mask, hyper_labels_cls, hyper_labels_reg, options.patch_size, options.patch_stride)
         if not os.path.exists(options.data_split_path):
             os.makedirs(options.data_split_path)
         np.save(options.data_split_path + '/train_set.npy', train_set)
         np.save(options.data_split_path + '/val_set.npy', val_set)
         np.save(options.data_split_path + '/test_set.npy', test_set)
+        np.save(options.data_split_path + '/origin_set.npy', origin_set)
 
     print('Data distribution on training set')
     class_weights = compute_data_distribution(hyper_labels_cls, train_set, categorical)
@@ -282,6 +285,28 @@ def main():
                             augmentation=None,
                             patch_size=options.patch_size,
                             shuffle=True)
+    test_loader = get_loader(hyper_image,
+                             multiplier,
+                             hyper_labels_cls,
+                             hyper_labels_reg,
+                             test_set,
+                             options.batch_size,
+                             model_name=model_name,
+                             is_3d_convolution=True,
+                             augmentation=None,
+                             patch_size=options.patch_size,
+                             shuffle=True)
+    origin_loader = get_loader(hyper_image,
+                                multiplier,
+                                hyper_labels_cls,
+                                hyper_labels_reg,
+                                origin_set,
+                                options.batch_size,
+                                model_name=model_name,
+                                is_3d_convolution=True,
+                                augmentation=None,
+                                patch_size=options.patch_size,
+                                shuffle=False)
 
     print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
 

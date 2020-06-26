@@ -8,6 +8,7 @@ from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_
 from sklearn.preprocessing import LabelBinarizer
 import torch
 import matplotlib
+from scipy.ndimage import convolve
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -155,6 +156,7 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
     train = []
     val = []
     test = []
+    origin = []
     coords = []
     random_state = 797  # 646, 919, 390, 101
     R, C, _ = mask.size()
@@ -176,6 +178,10 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
                 #         train.append((i, j))
                 #     elif val_row_start <= i <= val_row_end:
                 #         val.append((i, j))
+
+    for i in range(patch_size, rows - patch_size, 1):
+        for j in range(patch_size, cols - patch_size, 1):
+            origin.append([i, j, 0, None, None])
 
     if mode == 'random' or mode == 'grid':
         train, test = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
@@ -229,7 +235,7 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
     print('Number of training pixels: %d, val pixels: %d' % (len(train), len(val)))
     print('Train', train[0:10])
     print('Val', val[0:10])
-    return train, test, val
+    return train, test, val, origin
 
 
 def resize_img(path, threshold):
@@ -690,6 +696,12 @@ def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, option
 
             export_error_points(coords, absolute_errors, hypGt, absolute_errors_all, names, epoch, save_path)
 
+            pred = np.zeros((dataset_loader.dataset.hyper_row, dataset_loader.dataset.hyper_col))
+            for i in range(dataset_loader.dataset.coords.shape[0]):
+                if i < all_pred_reg.shape[0]:
+                    pred[dataset_loader.dataset.coords[i][0], dataset_loader.dataset.coords[i][1]] = all_pred_reg[i][0]
+            compute_variance_pred_neighborhoods(pred, 'all_tasks', save_path, epoch, 5)            
+
             for i in range(n_reg):
                 x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
 
@@ -707,3 +719,28 @@ def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, option
                 plot_largest_error_patches(task_label, topk_points, dataset_loader.dataset.patch_size,
                                            names[i], save_path, epoch)
 
+                # compute_variance_pred_neighborhoods(y, names[i], save_path, epoch, 5)
+
+def compute_variance_pred_neighborhoods(task_label, task_name, path, epoch, kernel_size=3):
+    out = np.ones(task_label.shape)
+
+    height, width = task_label.shape[:2]
+    for i in range(height):
+        for j in range(width):
+            out[i, j] = get_neighbors(task_label, i, j, kernel_size).flatten().var()
+
+    fig, ax = plt.subplots(figsize=(25, 25))
+    ax.grid(False)
+    ax.set_title('Variance of the {} output with {}x{} neighborhoods'.format(task_name, kernel_size, kernel_size))
+    im = ax.imshow(out, cmap='viridis', aspect='auto')
+    plt.axis('off')
+    save_name = '{}/variance_{}x{}_{}_e{}'.format(path, kernel_size, kernel_size, task_name, epoch)
+    fig.savefig(save_name)
+    plt.close(fig)
+
+def get_neighbors(arr, x, y, kernel_size=3):
+    if kernel_size % 2 == 0:
+        raise ValueError('Kernel size must be an odd value')
+
+    half = kernel_size // 2
+    return arr[max(0, x - half):min(x + kernel_size - half, arr.shape[0]), max(0, y - half):min(y + kernel_size - half, arr.shape[1])]
