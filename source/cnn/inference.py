@@ -56,7 +56,9 @@ def infer(model, test_loader, device, options, metadata, hyper_labels_reg):
         categorical = metadata['categorical']
 
         with torch.no_grad():
-            batch_pred_cls, batch_pred_reg = model(src, tgt_cls, tgt_reg)
+            with torch.autograd.profiler.profile(use_cuda=True) as prof:
+                batch_pred_cls, batch_pred_reg = model(src, tgt_cls, tgt_reg, True)
+            print(prof)
 
             if not options.no_classification:
                 # concat batch predictions
@@ -70,7 +72,9 @@ def infer(model, test_loader, device, options, metadata, hyper_labels_reg):
                 all_pred_reg = torch.cat((all_pred_reg, batch_pred_reg), dim=0)
 
         state = {
-            'all_tgt_reg': all_tgt_reg,
+            'all_target_cls': tgt_cls_logits,
+            'all_pred_cls': pred_cls_logits,
+            'all_target_reg': all_tgt_reg,
             'all_pred_reg': all_pred_reg,
             'batch_size':  options.batch_size,
             'data_idx': data_idx
@@ -116,7 +120,7 @@ def main():
     out_cls = metadata['num_classes']
     out_reg = hyper_labels_reg.shape[-1]
     R, C, num_bands = hyper_image.shape
-    test_set = np.load(options.data_split_path + '/origin_set2.npy', allow_pickle=True)
+    test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
 #    test_set = np.load('/scratch/project_2001284/haicu/AIROBEST/source/cnn/data/subsetA-full-bands/splits-orig/origin_set.npy', allow_pickle=True)
 
     print('Data distribution on test set')
