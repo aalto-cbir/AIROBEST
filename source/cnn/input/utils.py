@@ -179,9 +179,9 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
                 #     elif val_row_start <= i <= val_row_end:
                 #         val.append((i, j))
 
-    for i in range(patch_size, rows - patch_size, 1):
-        for j in range(patch_size, cols - patch_size, 1):
-            origin.append([i, j, 0, None, None])
+#    for i in range(patch_size, rows - patch_size, 1):
+#        for j in range(patch_size, cols - patch_size, 1):
+#            origin.append([i, j, 0, None, None])
 
     if mode == 'random' or mode == 'grid':
         train, test = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
@@ -235,7 +235,7 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
     print('Number of training pixels: %d, val pixels: %d' % (len(train), len(val)))
     print('Train', train[0:10])
     print('Val', val[0:10])
-    return train, test, val, origin
+    return train, test, val, coords
 
 
 def resize_img(path, threshold):
@@ -486,9 +486,11 @@ def compute_data_distribution(labels, dataset, categorical):
     if labels.nelement() == 0:
         return []
     # TODO: make sure training and validation sets include all classes for each classification tasks
+    print('start getting data labels')
     data_labels = []  # labels of data points in the dataset
     for (r, c, _, _, _) in dataset:
         data_labels.append(labels[r, c, :])
+    print('end getting data labels')
 
     data_labels = torch.stack(data_labels, dim=0)
     weights = []
@@ -696,11 +698,13 @@ def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, option
 
             export_error_points(coords, absolute_errors, hypGt, absolute_errors_all, names, epoch, save_path)
 
-            pred = np.zeros((dataset_loader.dataset.hyper_row, dataset_loader.dataset.hyper_col))
-            for i in range(dataset_loader.dataset.coords.shape[0]):
-                if i < all_pred_reg.shape[0]:
-                    pred[dataset_loader.dataset.coords[i][0], dataset_loader.dataset.coords[i][1]] = all_pred_reg[i][0]
-            compute_variance_pred_neighborhoods(pred, 'all_tasks', save_path, epoch, 5)            
+            # pred = np.zeros((dataset_loader.dataset.hyper_row, dataset_loader.dataset.hyper_col))
+            # print('start get pred')
+            # for i in range(dataset_loader.dataset.coords.shape[0]):
+            #     if i < all_pred_reg.shape[0]:
+            #         pred[dataset_loader.dataset.coords[i][0], dataset_loader.dataset.coords[i][1]] = all_pred_reg[i][0]
+            # print('done get pred')
+            # compute_variance_pred_neighborhoods(pred, 'all_tasks', save_path, epoch, 3)
 
             for i in range(n_reg):
                 x, y = all_tgt_reg[:, i], all_pred_reg[:, i]
@@ -725,9 +729,11 @@ def compute_variance_pred_neighborhoods(task_label, task_name, path, epoch, kern
     out = np.ones(task_label.shape)
 
     height, width = task_label.shape[:2]
+    print('start get neighbors')
     for i in range(height):
         for j in range(width):
             out[i, j] = get_neighbors(task_label, i, j, kernel_size).flatten().var()
+    print('done get neighbors')
 
     fig, ax = plt.subplots(figsize=(25, 25))
     ax.grid(False)

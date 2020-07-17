@@ -48,10 +48,10 @@ def parse_args():
     parser.add_argument('-metadata',
                         type=str,
                         default='./data/mosaic/metadata.pt',
-                        help="Path to training metadata (generated during preprocessing stage)")
+                        help='Path to training metadata (generated during preprocessing stage)')
     parser.add_argument('-gpu',
                         type=int, default=-1,
-                        help="Gpu id to be used, default is -1 which means cpu")
+                        help='Gpu id to be used, default is -1 which means cpu')
     parser.add_argument('-hyper_data_header',
                         required=False, type=str,
                         default='/proj/deepsat/hyperspectral/20170615_reflectance_mosaic_128b.hdr',
@@ -64,47 +64,47 @@ def parse_args():
     train = parser.add_argument_group('Training')
     train.add_argument('-epoch', type=int,
                        default=10,
-                       help="Number of training epochs, default is 10")
+                       help='Number of training epochs, default is 10')
     train.add_argument('-patch_size', type=int,
                        default=27,
-                       help="Size of the spatial neighbourhood, default is 11")
+                       help='Size of the spatial neighbourhood, default is 11')
     train.add_argument('-patch_stride', type=int,
                        default=1,
-                       help="Number of pixels to skip for each image patch while sliding over the training image")
+                       help='Number of pixels to skip for each image patch while sliding over the training image')
     train.add_argument('-lr', type=float,
                        default=1e-3,
-                       help="Learning rate, default is 1e-3")
+                       help='Learning rate, default is 1e-3')
     train.add_argument('-batch_size', type=int,
                        default=64,
-                       help="Batch size, default is 64")
+                       help='Batch size, default is 64')
     train.add_argument('-train_from', type=str,
                        default='',
-                       help="Path to checkpoint to start training from.")
+                       help='Path to checkpoint to start training from.')
     train.add_argument('-model', type=str,
                        default='ChenModel', choices=['ChenModel', 'LeeModel', 'PhamModel', 'SharmaModel', 'HeModel',
                                                      'PhamModel3layers', 'PhamModel3layers2', 'PhamModel3layers3',
                                                      'PhamModel3layers4', 'PhamModel3layers5', 'PhamModel3layers6',
                                                      'PhamModel3layers7', 'PhamModel3layers8', 'PhamModel3layers9',
                                                      'PhamModel3layers10'],
-                       help="Name of deep learning model to train with, options are [ChenModel | LeeModel]")
+                       help='Name of deep learning model to train with, options are [ChenModel | LeeModel]')
     train.add_argument('-save_dir', type=str,
                        default='',
-                       help="Directory to save model. If not specified, use name of the model")
+                       help='Directory to save model. If not specified, use name of the model')
     train.add_argument('-report_frequency', type=int,
                        default=20,
-                       help="Report training result every 'report_frequency' steps")
+                       help='Report training result every "report_frequency" steps')
     train.add_argument('-use_visdom', default=False, action='store_true',
                        help="Enable visdom to visualize training process")
     train.add_argument('-visdom_server', type=str,
                        default='http://localhost',
-                       help="Default visdom server")
+                       help='Default visdom server')
     train.add_argument('-loss_balancing', type=str, choices=['grad_norm', 'equal_weights', 'uncertainty'],
                        default='grad_norm',
-                       help="Specify loss balancing method for multi-task learning")
+                       help='Specify loss balancing method for multi-task learning')
     train.add_argument('-class_balancing', type=str, choices=['cost_sensitive', 'focal_loss', 'CRL'],
                        default='cost_sensitive',
-                       help="Specify method to handle class imbalance. Available options: "
-                            "[cost sensitive | class rectification loss]")
+                       help='Specify method to handle class imbalance. Available options: '
+                            '[cost sensitive | class rectification loss]')
     train.add_argument('-ignored_cls_tasks', nargs='+',
                         required=False, default=[],
                         help='List of classification task indices to ignore, indexing starts from 0')
@@ -113,7 +113,9 @@ def parse_args():
                         help='List of regression task indices to ignore, indexing starts from 0')
     train.add_argument('-augmentation', type=str, choices=['flip', 'radiation_noise', 'mixture_noise'],
                        default=None,
-                       help="Specify augmentation method")
+                       help='Specify augmentation method')
+    train.add_argument('-keep_best', type=int,
+                       default=10, help='Specify the number of best models to keep.')
 
     opt = parser.parse_args()
     opt.ignored_cls_tasks = list(map(int, opt.ignored_cls_tasks))
@@ -194,8 +196,8 @@ def main():
         print('Loading data split...')
         train_set = np.load(options.data_split_path + '/train_set.npy', allow_pickle=True)
         val_set = np.load(options.data_split_path + '/val_set.npy', allow_pickle=True)
-        test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
-        origin_set = np.load(options.data_split_path + '/origin_set.npy', allow_pickle=True)
+        # test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
+        # origin_set = np.load(options.data_split_path + '/origin_set.npy', allow_pickle=True)
     else:
         train_set, test_set, val_set, origin_set = split_data(R, C, mask, hyper_labels_cls, hyper_labels_reg, options.patch_size, options.patch_stride)
         if not os.path.exists(options.data_split_path):
@@ -285,28 +287,28 @@ def main():
                             augmentation=None,
                             patch_size=options.patch_size,
                             shuffle=True)
-    test_loader = get_loader(hyper_image,
-                             multiplier,
-                             hyper_labels_cls,
-                             hyper_labels_reg,
-                             test_set,
-                             options.batch_size,
-                             model_name=model_name,
-                             is_3d_convolution=True,
-                             augmentation=None,
-                             patch_size=options.patch_size,
-                             shuffle=True)
-    origin_loader = get_loader(hyper_image,
-                                multiplier,
-                                hyper_labels_cls,
-                                hyper_labels_reg,
-                                origin_set,
-                                options.batch_size,
-                                model_name=model_name,
-                                is_3d_convolution=True,
-                                augmentation=None,
-                                patch_size=options.patch_size,
-                                shuffle=False)
+    # test_loader = get_loader(hyper_image,
+    #                          multiplier,
+    #                          hyper_labels_cls,
+    #                          hyper_labels_reg,
+    #                          test_set,
+    #                          options.batch_size,
+    #                          model_name=model_name,
+    #                          is_3d_convolution=True,
+    #                          augmentation=None,
+    #                          patch_size=options.patch_size,
+    #                          shuffle=True)
+    # origin_loader = get_loader(hyper_image,
+    #                             multiplier,
+    #                             hyper_labels_cls,
+    #                             hyper_labels_reg,
+    #                             origin_set,
+    #                             options.batch_size,
+    #                             model_name=model_name,
+    #                             is_3d_convolution=True,
+    #                             augmentation=None,
+    #                             patch_size=options.patch_size,
+    #                             shuffle=False)
 
     print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
 

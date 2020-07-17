@@ -83,6 +83,11 @@ class Trainer(object):
         task_losses = []
         loss_ratios = []
         grad_norm_losses = []
+        best = {
+            'balanced_accuracy': 0,
+            'epoch': 0,
+            'train_step': 0
+        }
 
         print('Start training from epoch: ', start_epoch)
         for e in range(start_epoch, epoch + 1):
@@ -157,7 +162,7 @@ class Trainer(object):
 
                 self.optimizer.step()
 
-                # renormalize
+                # re-normalize
                 normalize_coeff = self.modelTrain.task_count / torch.sum(self.modelTrain.task_weights.data, dim=0)
                 self.modelTrain.task_weights.data = self.modelTrain.task_weights.data * normalize_coeff
 
@@ -234,8 +239,6 @@ class Trainer(object):
 
                 train_step += 1
 
-            if e % self.save_every == 1 or e == self.options.epoch:
-                self.save_checkpoint(e, train_step, initial_task_loss)
             epoch_loss = epoch_loss / len(train_loader)
             if self.options.loss_balancing == 'grad_norm':
                 print('Epoch {:<3}: Total loss={:.5f}, gradNorm_loss={:.5f}, loss_ratio={}, weights={}, task_loss={}'
@@ -282,6 +285,16 @@ class Trainer(object):
                             'xmax': 100
                         })
 
+                avg_balanced_acc = np.mean(val_balanced_accuracies)
+                if avg_balanced_acc > best['balanced_accuracy']:
+                    best['balanced_accuracy'] = avg_balanced_acc
+                    best['epoch'] = e
+                    best['train_step'] = train_step
+
+                    self.save_checkpoint(best['epoch'], best['train_step'], avg_balanced_acc, initial_task_loss)
+            else:
+                if e % self.save_every == 1 or e == self.options.epoch:
+                    self.save_checkpoint(e, train_step, avg_balanced_acc, initial_task_loss)
             if not self.options.no_classification and self.visualizer:
                 accuracy_list.append(accuracies.data.cpu().numpy())
                 accuracy_window = self.visualizer.line(
@@ -325,7 +338,6 @@ class Trainer(object):
         self.modelTrain.model.eval()
 
         sum_loss = 0
-        val_accuracies = torch.tensor([0.0] * len(self.categorical))  # treat all class uniformly
         pred_cls_logits = torch.tensor([], dtype=torch.float)
         tgt_cls_logits = torch.tensor([], dtype=torch.float)
         all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
@@ -366,12 +378,13 @@ class Trainer(object):
                             self.hyper_labels_reg, self.image_path, should_save=True, mode='validation')
         return average_loss, val_balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices
 
-    def save_checkpoint(self, epoch, train_step, initial_task_loss):
+    def save_checkpoint(self, epoch, train_step, avg_balanced_acc, initial_task_loss):
         """
         Saving model's state dict
+        :param epoch: epoch at which model is saved
+        :param train_step: train_step at which model is saved
+        :param avg_balanced_acc: avg_balanced_acc achieved by current model
         :param initial_task_loss: tensor of first step's task loss
-        :param train_step: the last training step when model is saved
-        :param epoch: the epoch when model is saved
         :return:
         """
         state = {
@@ -382,5 +395,5 @@ class Trainer(object):
             'optimizer': self.optimizer.state_dict(),
             'options': self.options
         }
-        torch.save(state, '{}/model_{}.pt'.format(self.ckpt_path, epoch))
+        torch.save(state, '{}/model_e{}_{:.2f}.pt'.format(self.ckpt_path, epoch, avg_balanced_acc))
         print('Saved model at epoch %d' % epoch)

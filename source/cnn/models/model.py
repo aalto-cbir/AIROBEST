@@ -783,7 +783,7 @@ class PhamModel3layers4(nn.Module):
         self.n_planes = n_planes
         self.patch_size = patch_size
 
-        self.conv1 = nn.Conv3d(1, n_planes * 4, (54, 4, 4))
+        self.conv1 = nn.Conv3d(1, n_planes * 4, (54, 3, 3))
         self.conv1_bn = nn.BatchNorm3d(n_planes * 4)
         self.pool1 = nn.MaxPool3d((1, 2, 2))
         self.conv1_1 = nn.Conv3d(n_planes * 4, n_planes * 4, (1, 1, 1), padding=(0, 0, 0))
