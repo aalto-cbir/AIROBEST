@@ -1623,48 +1623,53 @@ class ModelTrain(nn.Module):
 
         self.options = options
 
-    def forward(self, src, tgt_cls, tgt_reg):
+    def forward(self, src, tgt_cls, tgt_reg, isTest = False):
         task_loss = []
         pred_cls, pred_reg = self.model(src)
-        start = 0
 
-        for idx, (key, values) in enumerate(self.categorical.items()):
-            n_classes = len(values)
+        if not isTest:
+            start = 0
 
-            prediction, target = pred_cls[:, start:(start + n_classes)], tgt_cls[:, start:(start + n_classes)]
-            # for cross entropy loss
-            target = torch.argmax(target, dim=1).long()
-            criterion_cls = self.criterion_cls_list[idx]
+            for idx, (key, values) in enumerate(self.categorical.items()):
+                n_classes = len(values)
 
-            if self.options.class_balancing == 'CRL' and self.training:
-                single_loss = self.compute_objective_loss(criterion_cls, src, target, prediction)
-            else:
-                single_loss = criterion_cls(prediction, target)
+                prediction, target = pred_cls[:, start:(start + n_classes)], tgt_cls[:, start:(start + n_classes)]
+                # for cross entropy loss
+                target = torch.argmax(target, dim=1).long()
+                criterion_cls = self.criterion_cls_list[idx]
+
+                if self.options.class_balancing == 'CRL' and self.training:
+                    single_loss = self.compute_objective_loss(criterion_cls, src, target, prediction)
+                else:
+                    single_loss = criterion_cls(prediction, target)
+                    # if self.options.loss_balancing == 'uncertainty':
+                    #     # single_loss = criterion_cls(prediction * torch.exp(-self.log_sigma_cls[idx]), target)
+                    #     single_loss = criterion_cls(prediction, target)
+                    #     single_loss = torch.exp(-self.log_sigma_cls[idx]) * single_loss + self.log_sigma_cls[idx] / 2
+                    # else:
+                    #     single_loss = criterion_cls(prediction, target)
+
+                self_critic = True
+                if self_critic:
+                    prediction_idx = torch.argmax(prediction, dim=1).long()
+                    f1score = f1_score(prediction_idx.cpu(), target.cpu(), average='weighted')
+                    f1score = torch.tensor(f1score, device=src.device)
+                    single_loss = single_loss + (1 - f1score)
+                    
+                task_loss.append(single_loss)
+                start += n_classes
+
+            for idx in range(self.n_reg):
+                prediction, target = pred_reg[:, idx], tgt_reg[:, idx]
+                single_loss = self.criterion_reg(prediction, target)
                 # if self.options.loss_balancing == 'uncertainty':
-                #     # single_loss = criterion_cls(prediction * torch.exp(-self.log_sigma_cls[idx]), target)
-                #     single_loss = criterion_cls(prediction, target)
-                #     single_loss = torch.exp(-self.log_sigma_cls[idx]) * single_loss + self.log_sigma_cls[idx] / 2
-                # else:
-                #     single_loss = criterion_cls(prediction, target)
+                #     single_loss = 0.5 * torch.exp(-self.log_sigma_reg[idx]) * single_loss + self.log_sigma_reg[idx] / 2
+                
+                task_loss.append(single_loss)
 
-            self_critic = True
-            if self_critic:
-                prediction_idx = torch.argmax(prediction, dim=1).long()
-                f1score = f1_score(prediction_idx.cpu(), target.cpu(), average='weighted')
-                f1score = torch.tensor(f1score, device=src.device)
-                single_loss = single_loss + (1 - f1score)
-            task_loss.append(single_loss)
-            start += n_classes
+            return torch.stack(task_loss), pred_cls, pred_reg
 
-        for idx in range(self.n_reg):
-            prediction, target = pred_reg[:, idx], tgt_reg[:, idx]
-            single_loss = self.criterion_reg(prediction, target)
-            # if self.options.loss_balancing == 'uncertainty':
-            #     single_loss = 0.5 * torch.exp(-self.log_sigma_reg[idx]) * single_loss + self.log_sigma_reg[idx] / 2
-
-            task_loss.append(single_loss)
-
-        return torch.stack(task_loss), pred_cls, pred_reg
+        return pred_cls, pred_reg
 
     def get_last_shared_layer(self):
         if isinstance(self.model, nn.DataParallel):
