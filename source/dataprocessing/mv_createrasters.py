@@ -36,6 +36,8 @@ hyperspectral_filename = 'TAIGA_20170615_reflectance_128b.hdr'
 # these files are not part of TAIGA dataset, they are downloaded from https://metsaan.fi
 filenames_FFC = ['MV_Juupajoki.gpkg', 'MV_Ruovesi.gpkg' ]
 datafolder_FFC = 'F:\AIROBEST'
+# a file with a list of "bad" stand ids, these are known to be incorrect in the database
+badstandfile = "bad_stands_updated_15092020.csv"
 
 # output
 outfolder = TAIGAdatafolder
@@ -49,6 +51,12 @@ slw = [None]*4
 for i in range( 1, 4 ):
     STAR[i] = tools.borealallometry.STAR( i )
     slw[i] = tools.borealallometry.slw( i )
+
+# read bad stand list: one id per line
+f=open( os.path.join( datafolder_FFC, badstandfile ), "r" )
+badstandlist = f.read().split('\n')
+# retain only the numeric (integer) values, assume others comments
+badstandlist = [ int(i) for i in badstandlist if i.strip().isdigit() ]
 
 # -----------------------------------------------------
 # read FFC geopackages
@@ -81,12 +89,14 @@ for fi in filenames_FFC:
 
     # save to the big outlist all data which are inside the hyperspectral image
     for l,i in zip(outlist,outlist_i):
-        l += [ i[ii] for ii in i_stand ]
+        l += [ i[ii] for ii in i_stand if not outlist_i[2][ii] in badstandlist ]
 
     # get the stand ids which are inside the AISA data
     #     this data has already been appended to outlist, 
-    #     standids_i is for local use, looking up datain other tables
-    standids_i = [ outlist_i[2][i] for i in i_stand ]
+    #     standids_i is for local use, looking up data in other tables
+    standids_i = [ outlist_i[2][ii] for ii in i_stand if not outlist_i[2][ii] in badstandlist ]
+    print("{:d} features left after excluding bad stands".format( len(standids_i) ) )
+
     # generate treestandid from standid. For the data modeled to beginning of 2018,  it should be 2000000000+standid
     tsids_i = [ i + 2000000000 for i in standids_i ]
 
