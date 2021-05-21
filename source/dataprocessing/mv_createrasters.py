@@ -18,6 +18,7 @@ import os
 import datetime
 import sqlite3
 import json
+import scipy.ndimage
 
 # load the hyperspectral functions -- not yet a module
 #   -- note: these should be soon available as part of spectralinvariants python module (on GitHub)
@@ -31,11 +32,11 @@ import tools.hypdatatools_gdal
 import tools.borealallometry
 
 # input files: gpkg files with FFC data, hyperspectral image
-TAIGAdatafolder = 'F:\AIROBEST'
-hyperspectral_filename = 'TAIGA_20170615_reflectance_128b.hdr' 
+TAIGAdatafolder = 'C:/data/wrk/TAIGA'
+hyperspectral_filename = '20170615_reflectance_128b_mosaic.hdr' 
 # these files are not part of TAIGA dataset, they are downloaded from https://metsaan.fi
 filenames_FFC = ['MV_Juupajoki.gpkg', 'MV_Ruovesi.gpkg' ]
-datafolder_FFC = 'F:\AIROBEST'
+datafolder_FFC = 'C:/data/wrk/TAIGA_source'
 # a file with a list of "bad" stand ids, these are known to be incorrect in the database
 badstandfile = "bad_stands_updated_15092020.csv"
 
@@ -276,8 +277,11 @@ for fi in filenames_FFC:
 # data in outlist and outlist_extra are processed once more, scaled if needed and stored as integer
 
 # exclude first three colums (FID, geometries, standid) from saving as raster
-outfeatures = outlist[ 3: ] + outlist_extra 
-outnames = fieldnames_in[ 1: ] + outlist_extranames
+#    add stand ID as the last layer
+outfeatures = outlist[ 3: ] + outlist_extra + [outlist[2]]
+outnames = fieldnames_in[ 1: ] + outlist_extranames + ['standID']
+
+# YYY = XXX # stop before creating any files
 
 # Discard border pixels: buffer the stands by -10 m
 for i,j in enumerate( outlist[0] ):
@@ -373,6 +377,10 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
         storagefactor = 1 # factor for storage as int
         descriptionlist['type'] = 'continuous'
         descriptionlist['range'] = [0,100]
+    elif name == "standID":
+        data_converted = data
+        descriptionlist['type'] = 'categorical'
+        descriptionlist['values'] = { '0':'N/A'}
         
     # complete data conversion and descriptionlist
     if descriptionlist['type'] == 'continuous':
@@ -394,20 +402,40 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
 
     print("band {:d}: {} -- rasterizing... ".format( ii, name ), end ="" )
     memshp = tools.hypdatatools_gdal.vector_newfile( outlist[1], { name:data_converted } )
-    memraster = tools.hypdatatools_gdal.vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype=int )
+    # memraster = tools.hypdatatools_gdal.vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype=int )
+    memraster = tools.hypdatatools_gdal.vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype="long" )
     # copy to envi file
     print(" saving... ", end="" )
     mvdata_map[:,:,ii] = memraster[:,:]
     print("done")
     ii += 1
     
+# create buffers around hyperspectral image edges
+# the current buffer size is 22 pixels, making it safe to use a 45x45 window in any area where forestry data exist
+buffersize = 22
+print("Creating mask for hyperspectral data")
+hypdata = spectral.open_image( filename_AISA )
+DIV = tools.hypdatatools_img.get_DIV(filename_AISA, hypdata=hypdata)
+hypdata_map = hypdata.open_memmap()
+# mask = np.all( hypdata_map==DIV, axis=2 )
+# the above is very slow as it requires reading the whole file, use one band from the middle
+mask = hypdata_map[:,:,100]==DIV 
+# "no data" pixels are now masked out, for them mask==True
+# expand the mask, so there would be no forestry data close to image edges
+#   this way, when a window is used, the window would not include pixels with DIV (="no data")
+mask_expanded = scipy.ndimage.maximum_filter( mask, buffersize, mode='constant', cval=True)
+# the options mode='constant',cval=True make all areas outside the raster to be treated as DIV
+
+# apply the mask
+DIV_out = tools.hypdatatools_img.get_DIV( filename_newraster, hypdata=mvdata )
+mvdata_map[ mask_expanded, : ] = DIV_out
 
 mvdata.metadata['band names'] = outnames
 
 # create banddescriptions and store to metadata
 banddescriptions_sorted = {}
 for i in outnames:
-    # sort the dictionary for more readable output, assuming json strin is in the same order as data are stored in the dict
+    # sort the dictionary for more readable output, assuming json string is in the same order as data are stored in the dict
     banddescriptions_sorted[i] = banddescriptions[i]
     # this will also create a nice error if not all data are described in banddescriptions
 
