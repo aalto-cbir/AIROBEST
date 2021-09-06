@@ -13,6 +13,7 @@ from models.model import ChenModel, LeeModel, PhamModel, SharmaModel, HeModel, M
     PhamModel3layers2, PhamModel3layers3, PhamModel3layers4, PhamModel3layers5, PhamModel3layers6, PhamModel3layers7, \
     PhamModel3layers8, PhamModel3layers9, PhamModel3layers10
 from input.data_loader import get_loader
+import time
 
 
 def parse_args():
@@ -40,25 +41,23 @@ def infer(model, test_loader, device, options, metadata, hyper_labels_reg):
 
     pred_cls_logits = torch.tensor([], dtype=torch.float)
     tgt_cls_logits = torch.tensor([], dtype=torch.float)
-    all_pred_reg = torch.tensor([], dtype=torch.float)  # on cpu
+    all_pred_reg = torch.tensor([], dtype=torch.float)
     all_tgt_reg = torch.tensor([], dtype=torch.float)
 
     save_dir = options.save_dir
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
+    start_time = time.time()
     for idx, (src, tgt_cls, tgt_reg, data_idx) in enumerate(test_loader):
-        print(data_idx)
+
         src = src.to(device, dtype=torch.float32)
         tgt_cls = tgt_cls.to(device, dtype=torch.float32)
         tgt_reg = tgt_reg.to(device, dtype=torch.float32)
-        # data_indices = torch.cat((data_indices, data_idx), dim=0)
         categorical = metadata['categorical']
 
         with torch.no_grad():
-            with torch.autograd.profiler.profile(use_cuda=True) as prof:
-                batch_pred_cls, batch_pred_reg = model(src, tgt_cls, tgt_reg, True)
-            print(prof)
+            batch_pred_cls, batch_pred_reg = model(src, tgt_cls, tgt_reg, True)
 
             if not options.no_classification:
                 # concat batch predictions
@@ -71,25 +70,24 @@ def infer(model, test_loader, device, options, metadata, hyper_labels_reg):
                 all_tgt_reg = torch.cat((all_tgt_reg, tgt_reg), dim=0)
                 all_pred_reg = torch.cat((all_pred_reg, batch_pred_reg), dim=0)
 
-        state = {
-            'all_target_cls': tgt_cls_logits,
-            'all_pred_cls': pred_cls_logits,
-            'all_target_reg': all_tgt_reg,
-            'all_pred_reg': all_pred_reg,
-            'batch_size':  options.batch_size,
-            'data_idx': data_idx
-        }
-        torch.save(state, '{}/all_pred.pt'.format(save_dir))
+    # balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices = compute_cls_metrics(pred_cls_logits, tgt_cls_logits, options,
+    #                                                                        categorical)
 
-    balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices = compute_cls_metrics(pred_cls_logits, tgt_cls_logits, options,
-                                                                           categorical)
+    # compute_reg_metrics(test_loader, all_pred_reg, all_tgt_reg, options.epoch, options, metadata,
+    #                     hyper_labels_reg, save_dir, should_save=True, mode='test')
 
-    compute_reg_metrics(test_loader, all_pred_reg, all_tgt_reg, options.epoch, options, metadata,
-                        hyper_labels_reg, save_dir, should_save=True, mode='test')
+    state = {
+                'all_target_cls': tgt_cls_logits,
+                'all_pred_cls': pred_cls_logits,
+                'all_target_reg': all_tgt_reg,
+                'all_pred_reg': all_pred_reg
+            }
+    torch.save(state, '{}/test_pred.pt'.format(save_dir))
 
 
 def main():
     print('Start testing...')
+    start_time = time.time()
     infer_opts = parse_args()
 
     print('Loading checkpoint from %s' % infer_opts.model_path)
@@ -105,23 +103,28 @@ def main():
 
     metadata = torch.load(options.metadata)
     hyper_image = torch.load(options.hyper_data_path)
-    hyper_labels = torch.load(options.tgt_path)
+    hyper_labels = torch.load(options.tgt_path).float()
     norm_inv = torch.load(options.src_norm_multiplier).float()
-
-#    metadata = torch.load('/scratch/project_2001284/haicu/AIROBEST/source/cnn/data/subsetA-full-bands/metadata.pt')
-#    hyper_image = torch.load('/scratch/project_2001284/haicu/AIROBEST/source/cnn/data/subsetA-full-bands/hyperspectral_src.pt')
-#    hyper_labels = torch.load('/scratch/project_2001284/haicu/AIROBEST/source/cnn/data/subsetA-full-bands/hyperspectral_tgt_normalized.pt')
-#    norm_inv = torch.load('/scratch/project_2001284/haicu/AIROBEST/source/cnn/data/subsetA-full-bands/image_norm_l2norm_along_channel.pt').float()
+    
+    elapsed_time = time.time() - start_time
+    print('elapsed time: ', elapsed_time)
 
     # remove ignored tasks
+    start_time = time.time()
     hyper_labels_cls, hyper_labels_reg = remove_ignored_tasks(hyper_labels, options, metadata)
+
+    elapsed_time = time.time() - start_time
+    print('elapsed time: ', elapsed_time)
+
     categorical = metadata['categorical']
     print('Metadata values', metadata)
     out_cls = metadata['num_classes']
     out_reg = hyper_labels_reg.shape[-1]
     R, C, num_bands = hyper_image.shape
     test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
-#    test_set = np.load('/scratch/project_2001284/haicu/AIROBEST/source/cnn/data/subsetA-full-bands/splits-orig/origin_set.npy', allow_pickle=True)
+
+    elapsed_time = time.time() - start_time
+    print('elapsed time: ', elapsed_time)
 
     print('Data distribution on test set')
 #    class_weights = compute_data_distribution(hyper_labels_cls, test_set, categorical)
@@ -179,24 +182,38 @@ def main():
 
     multiplier = None if options.input_normalize_method == 'minmax_scaling' else norm_inv
 
+    start_time = time.time()
     test_loader = get_loader(hyper_image,
                              multiplier,
                              hyper_labels_cls,
                              hyper_labels_reg,
                              test_set,
-                             options.batch_size,
+                             32,
                              model_name=model_name,
                              is_3d_convolution=True,
                              augmentation=options.augmentation,
                              patch_size=options.patch_size,
-                             shuffle=False)
+                             shuffle=False,
+                             num_workers=0,
+                             pin_memory=True)
+
+    elapsed_time = time.time() - start_time
+    print('elapsed time: ', elapsed_time)                             
 
     modelTrain = ModelTrain(model, loss_cls_list, loss_reg, metadata, options)
     modelTrain = modelTrain.to(device)
     if checkpoint is not None:
         modelTrain.load_state_dict(checkpoint['model'])
-        
+    
+    start_time = time.time()
+
+    # with torch.autograd.profiler.profile(use_cuda=True) as prof:
     infer(modelTrain, test_loader, device, options, metadata, hyper_labels_reg)
+    # prof.export_chrome_trace(options.save_dir + '/profiler_log_final.json')
+    # print(prof)
+
+    elapsed_time = time.time() - start_time
+    print('elapsed time: ', elapsed_time)
 
 
 if __name__ == "__main__":
