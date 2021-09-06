@@ -17,6 +17,8 @@ import time
 import os
 import datetime
 import sqlite3
+import json
+import scipy.ndimage
 
 # load the hyperspectral functions -- not yet a module
 #   -- note: these should be soon available as part of spectralinvariants python module (on GitHub)
@@ -30,11 +32,13 @@ import tools.hypdatatools_gdal
 import tools.borealallometry
 
 # input files: gpkg files with FFC data, hyperspectral image
-TAIGAdatafolder = 'F:\AIROBEST'
-hyperspectral_filename = 'TAIGA_20170615_reflectance_128b.hdr' 
+TAIGAdatafolder = 'C:/data/wrk/TAIGA'
+hyperspectral_filename = '20170615_reflectance_128b_mosaic.hdr' 
 # these files are not part of TAIGA dataset, they are downloaded from https://metsaan.fi
 filenames_FFC = ['MV_Juupajoki.gpkg', 'MV_Ruovesi.gpkg' ]
-datafolder_FFC = 'F:\AIROBEST'
+datafolder_FFC = 'C:/data/wrk/TAIGA_source'
+# a file with a list of "bad" stand ids, these are known to be incorrect in the database
+badstandfile = "bad_stands_updated_15092020.csv"
 
 # output
 outfolder = TAIGAdatafolder
@@ -48,6 +52,12 @@ slw = [None]*4
 for i in range( 1, 4 ):
     STAR[i] = tools.borealallometry.STAR( i )
     slw[i] = tools.borealallometry.slw( i )
+
+# read bad stand list: one id per line
+f=open( os.path.join( datafolder_FFC, badstandfile ), "r" )
+badstandlist = f.read().split('\n')
+# retain only the numeric (integer) values, assume others comments
+badstandlist = [ int(i) for i in badstandlist if i.strip().isdigit() ]
 
 # -----------------------------------------------------
 # read FFC geopackages
@@ -67,7 +77,7 @@ outlist_extranames = [] # names of the variables in outlist_extra
 
 filename_AISA = os.path.join(TAIGAdatafolder,hyperspectral_filename)
 # Loop over the FFC data files and collect required data into outlist_extra
-# NOTE: data will be saved in outlist_extra in the order they are stored in outlist_extra
+# NOTE: data will be saved in outlist_extra in the order they are processed below
 for fi in filenames_FFC:
     filename_mv = os.path.join( datafolder_FFC, fi ) 
     outlist_i = ( tools.hypdatatools_gdal.vector_getfeatures( filename_mv, fieldnames_in ) )
@@ -80,12 +90,14 @@ for fi in filenames_FFC:
 
     # save to the big outlist all data which are inside the hyperspectral image
     for l,i in zip(outlist,outlist_i):
-        l += [ i[ii] for ii in i_stand ]
+        l += [ i[ii] for ii in i_stand if not outlist_i[2][ii] in badstandlist ]
 
     # get the stand ids which are inside the AISA data
     #     this data has already been appended to outlist, 
-    #     standids_i is for local use, looking up datain other tables
-    standids_i = [ outlist_i[2][i] for i in i_stand ]
+    #     standids_i is for local use, looking up data in other tables
+    standids_i = [ outlist_i[2][ii] for ii in i_stand if not outlist_i[2][ii] in badstandlist ]
+    print("{:d} features left after excluding bad stands".format( len(standids_i) ) )
+
     # generate treestandid from standid. For the data modeled to beginning of 2018,  it should be 2000000000+standid
     tsids_i = [ i + 2000000000 for i in standids_i ]
 
@@ -265,8 +277,11 @@ for fi in filenames_FFC:
 # data in outlist and outlist_extra are processed once more, scaled if needed and stored as integer
 
 # exclude first three colums (FID, geometries, standid) from saving as raster
-outfeatures = outlist[ 3: ] + outlist_extra 
-outnames = fieldnames_in[ 1: ] + outlist_extranames
+#    add stand ID as the last layer
+outfeatures = outlist[ 3: ] + outlist_extra + [outlist[2]]
+outnames = fieldnames_in[ 1: ] + outlist_extranames + ['standID']
+
+# YYY = XXX # stop before creating any files
 
 # Discard border pixels: buffer the stands by -10 m
 for i,j in enumerate( outlist[0] ):
@@ -276,20 +291,32 @@ mvdata = tools.hypdatatools_img.create_raster_like( filename_AISA, filename_newr
     force=True, description="Standlevel forest variable data from Metsakeskus geopackages" ) # outtypes 2=int, 3=long
 mvdata_map = mvdata.open_memmap( writable=True )
 
+# extra information is stored as json (but without outermost braces)
+banddescriptions = {} # the big json dict
+
 # create a memory shapefile with standid and fertility data
 ii = 0 # Note to self: unclear why ii is necessary, why not use i_zip?
 # loop over all data to be saved in the raster
 for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
     # convert data into a integer-encodable format        
     # create a memory shapefile with the field for rasterization
-    data_converted = data
+    descriptionlist = {} # description of the current band, to be used in banddescriptions
+    valuelist = {} # list of possible values in a band, to be used in banddescriptions
     # do some necessary transformations for the data to store in integer format
+    #  at the same time, create the extra metadata to store as json
     if name == "fertilityclass":
-        outnames[i_zip] = "fertility_class"
+        name = "fertility_class" 
+        data_converted = data
+        descriptionlist['type'] = 'categorical'
+        descriptionlist['values'] = { '0':'None', '1':'Herb-rich forest', '2':'Herb-rich heath forest',
+            '3':'Mesic heath forest', '4':'Sub-xeric heath forest', '5':'Xeric heath forest',
+            '6':'Barren heath forest'}
     elif name == "soiltype":
         print("Simplifying soil classification to 1:mineral/2:organic.")
         data_converted = [ 2 if (i>59 and i<70) else 1 for i in data ]
-        outnames[i_zip] = "soil_class"
+        name = "soil_class"
+        descriptionlist['type'] = 'categorical'
+        descriptionlist['values'] = {'0':'None', '1':'Mineral', '2':'Organic'}
     elif name == "main_tree_species":
         # change None to zero
         data_converted = [ i if i is not None else 0 for i in data  ]
@@ -297,34 +324,123 @@ for i_zip,(data,name) in enumerate(zip( outfeatures, outnames )):
         data_converted = [ i if i < 4 else 3 for i in data_converted  ]
         print(" converting other tree species to birch")
         # band name should end with "_class" for categorical variables
-        outnames[i_zip] = "main_tree_species_class"
+        name = "main_tree_species_class"
+        descriptionlist['type'] = 'categorical'
+        descriptionlist['values'] = {'0':'None', '1':'Scots pine', '2':'Norway spruce', '3':'birch and other broadleaves'}
     elif name == "basal_area":
-        data_converted = [ int(i*100) for i in data ]
-        outnames[i_zip] = name+"*100_[m2/ha]"
+        unitstring = 'm2/ha'
+        storagefactor = 100 # factor for storage as int
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,None]
     elif name == "mean_height":
-        data_converted = [ int(i*100) for i in data ]
-        outnames[i_zip] = name+"_[cm]"        
+        storagefactor = 100 # factor for storage as int
+        unitstring = 'm'
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,None]
     elif name == "mean_dbh":
-        data_converted = [ int(i*100) for i in data ]
-        outnames[i_zip] = name+"*100_[cm]"
+        unitstring = 'cm'
+        storagefactor = 100 # factor for storage as int
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,None]
     elif name == "leaf_area_index":
-        data_converted = [ int(i*100) for i in data ]
-        outnames[i_zip] = name+"*100"
+        unitstring = ''
+        storagefactor = 100 # factor for storage as int
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,None]
     elif name == "effective_leaf_area_index":
-        data_converted = [ int(i*100) for i in data ]
-        outnames[i_zip] = name+"*100" 
+        unitstring = ''
+        storagefactor = 100 # factor for storage as int
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,None]
     elif name == "woody_biomass":
-        outnames[i_zip] = "woody_biomass_[t/ha]" 
+        unitstring = 't/ha'
+        storagefactor = 1
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,None]        
+    elif name == "stem_density":
+        unitstring = '1/ha'
+        storagefactor = 1 # factor for storage as int
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,None]
+    elif name == "percentage_of_pine":
+        unitstring = '%'
+        storagefactor = 1 # factor for storage as int
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,100]
+    elif name == "percentage_of_spruce":
+        unitstring = '%'
+        storagefactor = 1 # factor for storage as int
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,100]
+    elif name == "percentage_of_birch":
+        unitstring = '%'
+        storagefactor = 1 # factor for storage as int
+        descriptionlist['type'] = 'continuous'
+        descriptionlist['range'] = [0,100]
+    elif name == "standID":
+        data_converted = data
+        descriptionlist['type'] = 'categorical'
+        descriptionlist['values'] = { '0':'N/A'}
+        
+    # complete data conversion and descriptionlist
+    if descriptionlist['type'] == 'continuous':
+        data_converted = [ int(i*storagefactor) for i in data ]
+        if unitstring == '':
+            unitstring_cat = ''
+        else:
+            unitstring_cat = "_[" + unitstring + "]"
+        if storagefactor == 1:
+            outnames[i_zip] = name+unitstring_cat
+        else:
+            outnames[i_zip] = name + "*" + str(storagefactor) + unitstring_cat
+        descriptionlist['unit'] = [ 1/storagefactor , unitstring ]
+    else:
+        outnames[i_zip] = name
+
+    descriptionlist['name'] = outnames[i_zip]
+    banddescriptions[ descriptionlist['name'] ] = descriptionlist
+
     print("band {:d}: {} -- rasterizing... ".format( ii, name ), end ="" )
     memshp = tools.hypdatatools_gdal.vector_newfile( outlist[1], { name:data_converted } )
-    memraster = tools.hypdatatools_gdal.vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype=int )
+    # memraster = tools.hypdatatools_gdal.vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype=int )
+    memraster = tools.hypdatatools_gdal.vector_rasterize_like( memshp, filename_AISA, shpfield=name, dtype="long" )
     # copy to envi file
     print(" saving... ", end="" )
     mvdata_map[:,:,ii] = memraster[:,:]
     print("done")
     ii += 1
+    
+# create buffers around hyperspectral image edges
+# the current buffer size is 22 pixels, making it safe to use a 45x45 window in any area where forestry data exist
+buffersize = 22
+print("Creating mask for hyperspectral data")
+hypdata = spectral.open_image( filename_AISA )
+DIV = tools.hypdatatools_img.get_DIV(filename_AISA, hypdata=hypdata)
+hypdata_map = hypdata.open_memmap()
+# mask = np.all( hypdata_map==DIV, axis=2 )
+# the above is very slow as it requires reading the whole file, use one band from the middle
+mask = hypdata_map[:,:,100]==DIV 
+# "no data" pixels are now masked out, for them mask==True
+# expand the mask, so there would be no forestry data close to image edges
+#   this way, when a window is used, the window would not include pixels with DIV (="no data")
+mask_expanded = scipy.ndimage.maximum_filter( mask, buffersize, mode='constant', cval=True)
+# the options mode='constant',cval=True make all areas outside the raster to be treated as DIV
+
+# apply the mask
+DIV_out = tools.hypdatatools_img.get_DIV( filename_newraster, hypdata=mvdata )
+mvdata_map[ mask_expanded, : ] = DIV_out
 
 mvdata.metadata['band names'] = outnames
+
+# create banddescriptions and store to metadata
+banddescriptions_sorted = {}
+for i in outnames:
+    # sort the dictionary for more readable output, assuming json string is in the same order as data are stored in the dict
+    banddescriptions_sorted[i] = banddescriptions[i]
+    # this will also create a nice error if not all data are described in banddescriptions
+
+banddescriptions_str = json.dumps( banddescriptions_sorted )[1:-2] # exclude outermost braces
+mvdata.metadata['band descriptions'] = banddescriptions_str
 
 # close envi files, this will also save all changes to data (but apparently not metadata)
 mvdata_map = None
@@ -332,4 +448,5 @@ mvdata_map = None
 # headers are apparently currently not updated by Spectral Python. Do it manually!
 # tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'byte order', 0)
 tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'band names', outnames )
+tools.hypdatatools_img.envi_addheaderfield( filename_newraster, 'band descriptions', banddescriptions_str )
 

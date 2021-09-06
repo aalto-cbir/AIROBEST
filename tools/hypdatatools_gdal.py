@@ -39,7 +39,7 @@ def get_rastergeometry( envihdrfilename, ignore_xystart=True, localprintcommand=
         have these set incorrectly (and 'x start' & 'y start' should be ignored)
         
     Returns:
-        SpatialReference, Geotransform
+        SpatialReference, Geotransform, StartValues
     """
     
     if localprintcommand is None:
@@ -100,15 +100,26 @@ def image2world ( envihdrfilename, pointmatrix_local ):
     """
     convert the image coordinates (relative to pixel center) in pointmatrix_local to the 
     (usually projected) world coordinates of envihdrfilename.
-    pointmatrix_local: 2-column np.matrix [[x, y]]
+    
+    Args: 
+        envihdrfilename: header file name of the invi file providing the geographical reference
+        pointmatrix_local: 2-column np.matrix [[S, L]] S: sample number, L: line number
+        
+    Returns:
+        A 2-column matrix of [x,y] in geographic coordinates
+        
+    NOTE: the function was originally written so that x-axis was pointng east, in the direcion of increasing
+    sample number, on unrotated ENVI image on screen, hence image y-axis was looking south, along the direction
+    of increasing line number, forming left-hand exes. A mathematically more natural approach would be to 
+    direct x-axis south in unrotated image (=line number) and y east (=sample number). Hence the 
     """
+    
     SR_r, GT, startvalues = get_rastergeometry( envihdrfilename )
 
-    # transform to hyperspectral figure coordinates
-    P = pointmatrix_local[:,0] + (startvalues[0]-1) + 0.5 # relative to pixel corner
-    L = pointmatrix_local[:,1] + (startvalues[1]-1) + 0.5
-    xy = np.column_stack(  ( GT[0] + P*GT[1] + L*GT[2],
-                    GT[3] + P*GT[4] + L*GT[5] ) )
+    SC = pointmatrix_local[:,0] + (startvalues[0]-1) + 0.5 # coordinate corresponding to sample number, relative to pixel corner
+    LC = pointmatrix_local[:,1] + (startvalues[1]-1) + 0.5 # coordinate corresponding to line number
+    xy = np.column_stack(  ( GT[0] + SC*GT[1] + LC*GT[2],
+                    GT[3] + SC*GT[4] + LC*GT[5] ) )
 
     return xy 
     
