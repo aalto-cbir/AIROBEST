@@ -174,9 +174,9 @@ def main():
     # use percentage of main tree species as mask if ignore_zero_labels is True
     # => only care about forest areas
     out_cls = metadata['num_classes']
-    idx = np.where(metadata['reg_label_names'] == 'percentage_mainspecies')[0]
+    idx = np.where(metadata['reg_label_names'] == 'leaf_area_index100')[0]
     mask = hyper_labels[:, :, out_cls + idx] if metadata['ignore_zero_labels'] else norm_inv
-
+    print((mask != 0).sum().tolist())
     # remove ignored tasks
     hyper_labels_cls, hyper_labels_reg = remove_ignored_tasks(hyper_labels, options, metadata)
     categorical = metadata['categorical']
@@ -196,7 +196,7 @@ def main():
         print('Loading data split...')
         train_set = np.load(options.data_split_path + '/train_set.npy', allow_pickle=True)
         val_set = np.load(options.data_split_path + '/val_set.npy', allow_pickle=True)
-        # test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
+        test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
         # origin_set = np.load(options.data_split_path + '/origin_set.npy', allow_pickle=True)
     else:
         train_set, test_set, val_set, origin_set = split_data(R, C, mask, hyper_labels_cls, hyper_labels_reg, options.patch_size, options.patch_stride)
@@ -287,17 +287,17 @@ def main():
                             augmentation=None,
                             patch_size=options.patch_size,
                             shuffle=True)
-    # test_loader = get_loader(hyper_image,
-    #                          multiplier,
-    #                          hyper_labels_cls,
-    #                          hyper_labels_reg,
-    #                          test_set,
-    #                          options.batch_size,
-    #                          model_name=model_name,
-    #                          is_3d_convolution=True,
-    #                          augmentation=None,
-    #                          patch_size=options.patch_size,
-    #                          shuffle=True)
+    test_loader = get_loader(hyper_image,
+                             multiplier,
+                             hyper_labels_cls,
+                             hyper_labels_reg,
+                             test_set,
+                             options.batch_size,
+                             model_name=model_name,
+                             is_3d_convolution=True,
+                             augmentation=None,
+                             patch_size=options.patch_size,
+                             shuffle=True)
     # origin_loader = get_loader(hyper_image,
     #                             multiplier,
     #                             hyper_labels_cls,
@@ -348,7 +348,7 @@ def main():
 
     trainer = Trainer(modelTrain, optimizer, scheduler, device, visualizer, metadata,
                       options, hyper_labels_reg, checkpoint)
-    trainer.train(train_loader, val_loader)
+    trainer.train(train_loader, val_loader, test_loader)
     print('End training...')
 
 

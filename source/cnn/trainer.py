@@ -53,7 +53,7 @@ class Trainer(object):
 
         return cls_loss + reg_loss
 
-    def train(self, train_loader, val_loader):
+    def train(self, train_loader, val_loader, test_loader):
         epoch = self.options.epoch
         if self.checkpoint:
             start_epoch = self.checkpoint['epoch'] + 1
@@ -84,7 +84,7 @@ class Trainer(object):
         loss_ratios = []
         grad_norm_losses = []
         best = {
-            'balanced_accuracy': 0,
+            'avg_mae': 1,
             'epoch': 0,
             'train_step': 0
         }
@@ -97,11 +97,15 @@ class Trainer(object):
             epoch_loss = 0.0
 
             for idx, (src, tgt_cls, tgt_reg, data_idx) in enumerate(train_loader):
+
                 src = src.to(self.device, dtype=torch.float32)
                 tgt_cls = tgt_cls.to(self.device, dtype=torch.float32)
                 tgt_reg = tgt_reg.to(self.device, dtype=torch.float32)
 
+                #with torch.autograd.profiler.profile(use_cuda=True) as prof:
                 task_loss, pred_cls, _ = self.modelTrain(src, tgt_cls, tgt_reg)
+                #prof.export_chrome_trace('./checkpoint/{}/profiler_log_{}.json'.format(self.options.save_dir, idx))
+                #print(prof)
 
                 if self.options.loss_balancing == 'uncertainty':
                     loss = self.compute_uncertainty_loss(task_loss)
@@ -226,16 +230,16 @@ class Trainer(object):
                                   'ylabel': "Loss",
                                   'legend': list(range(self.modelTrain.task_count))}
                         )
-
-                        gradnorm_loss_window = self.visualizer.line(
-                            X=np.arange(start_step, train_step + 1, self.options.report_frequency),
-                            Y=grad_norm_losses,
-                            update='update' if gradnorm_loss_window else None,
-                            win=gradnorm_loss_window,
-                            opts={'title': "Grad norm losses",
-                                  'xlabel': "Step",
-                                  'ylabel': "Loss"}
-                        )
+                        if self.options.loss_balancing == 'grad_norm':
+                            gradnorm_loss_window = self.visualizer.line(
+                                X=np.arange(start_step, train_step + 1, self.options.report_frequency),
+                                Y=grad_norm_losses,
+                                update='update' if gradnorm_loss_window else None,
+                                win=gradnorm_loss_window,
+                                opts={'title': "Grad norm losses",
+                                    'xlabel': "Step",
+                                    'ylabel': "Loss"}
+                            )
 
                 train_step += 1
 
@@ -264,11 +268,21 @@ class Trainer(object):
 
             metric = epoch_loss
             if val_loader is not None:
-                val_loss, val_balanced_accuracies, val_avg_accuracy, val_accuracies, conf_matrices \
+                val_loss, val_balanced_accuracies, val_avg_accuracy, val_accuracies, conf_matrices, avg_mae \
                     = self.validate(e, val_loader)
-                print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
+                print('val_avg_accuracy', val_avg_accuracy)
+                print('val_accuracies', val_accuracies)
+                if (val_avg_accuracy != 0.0):
+                    print('Validation loss: {:.5f}, validation accuracy: {:.2f}%, task accuracies: {}'
                       .format(val_loss, val_avg_accuracy.data.cpu().numpy(), val_accuracies.data.cpu().numpy()))
                 val_losses.append(val_loss)
+
+                # print('--- Test set validation ---')
+                # test_loss, _, test_avg_accuracy, test_accuracies, _, _ \
+                #     = self.validate(e, test_loader)
+                # print('Test validation loss: {:.5f}, test validation accuracy: {:.2f}%, task accuracies: {}'
+                #       .format(test_loss, test_avg_accuracy.data.cpu().numpy(), test_accuracies.data.cpu().numpy()))
+
                 if not self.options.no_classification:
                     accuracies = torch.cat((accuracies, val_accuracies, val_avg_accuracy.view(1)))
                     accuracy_legend = accuracy_legend + ['val_{}'.format(i) for i in range(len(val_accuracies))]
@@ -285,16 +299,17 @@ class Trainer(object):
                             'xmax': 100
                         })
 
-                avg_balanced_acc = np.mean(val_balanced_accuracies)
-                if avg_balanced_acc > best['balanced_accuracy']:
-                    best['balanced_accuracy'] = avg_balanced_acc
-                    best['epoch'] = e
-                    best['train_step'] = train_step
+                # avg_balanced_acc = np.mean(val_balanced_accuracies)
+                # if avg_mae < best['avg_mae']:
+                #     best['avg_mae'] = avg_mae
+                #     best['epoch'] = e
+                #     best['train_step'] = train_step
 
-                    self.save_checkpoint(best['epoch'], best['train_step'], avg_balanced_acc, initial_task_loss)
+                #     self.save_checkpoint(best['epoch'], best['train_step'], avg_mae, initial_task_loss)
+                self.save_checkpoint(e, train_step, avg_mae, initial_task_loss)
             else:
                 if e % self.save_every == 1 or e == self.options.epoch:
-                    self.save_checkpoint(e, train_step, avg_balanced_acc, initial_task_loss)
+                    self.save_checkpoint(e, train_step, avg_mae, initial_task_loss)
             if not self.options.no_classification and self.visualizer:
                 accuracy_list.append(accuracies.data.cpu().numpy())
                 accuracy_window = self.visualizer.line(
@@ -374,16 +389,20 @@ class Trainer(object):
                                                                                    self.options,
                                                                                    self.categorical)
 
-        compute_reg_metrics(val_loader, all_pred_reg, all_tgt_reg, epoch, self.options, self.metadata,
-                            self.hyper_labels_reg, self.image_path, should_save=True, mode='validation')
-        return average_loss, val_balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices
+        absolute_errors = torch.abs(all_pred_reg - all_tgt_reg)
+        mae_error_per_task = torch.mean(absolute_errors, dim=0)
+        avg_mae = torch.mean(mae_error_per_task)
 
-    def save_checkpoint(self, epoch, train_step, avg_balanced_acc, initial_task_loss):
+        compute_reg_metrics(val_loader, all_pred_reg, all_tgt_reg, epoch, self.options, self.metadata,
+                            self.hyper_labels_reg, self.image_path, should_save=False, mode='validation')
+        return average_loss, val_balanced_accuracies, avg_accuracy, task_accuracies, conf_matrices, avg_mae
+
+    def save_checkpoint(self, epoch, train_step, avg_mae, initial_task_loss):
         """
         Saving model's state dict
         :param epoch: epoch at which model is saved
         :param train_step: train_step at which model is saved
-        :param avg_balanced_acc: avg_balanced_acc achieved by current model
+        :param avg_mae: avg_mae achieved by current model
         :param initial_task_loss: tensor of first step's task loss
         :return:
         """
@@ -395,5 +414,5 @@ class Trainer(object):
             'optimizer': self.optimizer.state_dict(),
             'options': self.options
         }
-        torch.save(state, '{}/model_e{}_{:.2f}.pt'.format(self.ckpt_path, epoch, avg_balanced_acc))
+        torch.save(state, '{}/model_e{}_{:.5f}.pt'.format(self.ckpt_path, epoch, avg_mae))
         print('Saved model at epoch %d' % epoch)

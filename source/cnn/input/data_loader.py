@@ -183,13 +183,15 @@ class HypDataset(data.Dataset):
 
 
 def get_loader(hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, batch_size, patch_size=11,
-               model_name='ChenModel', shuffle=False, num_workers=0, is_3d_convolution=False, augmentation=None):
+               model_name='ChenModel', shuffle=False, num_workers=0, is_3d_convolution=False, augmentation=None, pin_memory=False):
+
     dataset = HypDataset(hyper_image, multiplier, hyper_labels_cls, hyper_labels_reg, coords, patch_size,
                          model_name=model_name, is_3d_convolution=is_3d_convolution, augmentation=augmentation)
 
     data_loader = data.DataLoader(dataset=dataset,
                                   batch_size=batch_size,
                                   shuffle=shuffle,
-                                  num_workers=num_workers)
+                                  num_workers=num_workers,
+                                  pin_memory=pin_memory)
 
     return data_loader

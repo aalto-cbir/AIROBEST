@@ -139,7 +139,7 @@ def get_patch(tensor, row, col, patch_size):
     return tensor[row1:(row2 + 1), col1:(col2 + 1)]
 
 
-def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size, stride=1, mode='grid'):
+def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size, stride=1, mode='grid', is_mask = False):
     """
     Split dataset into train, test, val sets based on the coordinates
     of each pixel in the hyperspectral image
@@ -184,8 +184,12 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
 #            origin.append([i, j, 0, None, None])
 
     if mode == 'random' or mode == 'grid':
-        train, test = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
-        train, val = train_test_split(train, train_size=0.9, random_state=random_state, shuffle=True)
+        if is_mask == True:
+            train, test = train_test_split(coords, train_size=0.99, random_state=random_state, shuffle=True)
+            train, val = train_test_split(train, train_size=0.99, random_state=random_state, shuffle=True)
+        else:
+            train, test = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
+            train, val = train_test_split(train, train_size=0.9, random_state=random_state, shuffle=True)
         # train, val = train_test_split(coords, train_size=0.8, random_state=random_state, shuffle=True)
     # elif mode == 'split':
     #     np.random.seed(random_state)
@@ -441,7 +445,7 @@ def save_as_rgb(hyper_image, wavelength, path):
         width = width // scaling_factor
     print("RGB size (wxh):", width, height)
     img = Image.fromarray(hyp_rgb.astype('uint8'))
-    img.thumbnail((width, height), Image.ANTIALIAS)
+    #img.thumbnail((width, height), Image.ANTIALIAS)
     img.save('%s/rgb_image.png' % path)
 
 
@@ -669,6 +673,7 @@ def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, option
     hypGt = get_geotrans(options.hyper_data_header)
     if not options.no_regression:
         absolute_errors = torch.abs(all_pred_reg - all_tgt_reg)
+        signed_errors = all_pred_reg - all_tgt_reg
         mae_error_per_task = torch.mean(absolute_errors, dim=0)
         print('{} MAE={:.5f}, MAE per task={}'.format(
             mode.capitalize(),
@@ -676,6 +681,7 @@ def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, option
             " ".join(map("{:.5f}".format, mae_error_per_task.data.cpu().numpy()))
         ))
         absolute_errors_all = torch.sum(absolute_errors, dim=1)
+        signed_errors_all = torch.sum(signed_errors, dim=1)
 
         if should_save:
             n_reg = all_pred_reg.shape[-1]
@@ -686,6 +692,7 @@ def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, option
             names = metadata['reg_label_names']
 
             plot_error_histogram(absolute_errors_all, 100, 'all_tasks', epoch, save_path)
+            plot_error_histogram(signed_errors_all, 100, 'all_tasks_signed_errors', epoch, save_path)
 
             k = N_samples // 10  # 10% of the largest error
             value, indices = torch.topk(absolute_errors_all, k, dim=0, largest=True, sorted=False)
@@ -714,6 +721,7 @@ def compute_reg_metrics(dataset_loader, all_pred_reg, all_tgt_reg, epoch, option
                 # plot error histogram
                 absolute_errors = torch.abs(x - y)
                 plot_error_histogram(absolute_errors, 100, names[i], epoch, save_path)
+                plot_error_histogram(signed_errors, 100, names[i] + '_signed_errors', epoch, save_path)
 
                 # plot top k largest errors on the map
                 task_label = hyper_labels_reg[:, :, i]
