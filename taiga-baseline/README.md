@@ -4,6 +4,8 @@ Repository for [AIROBEST project](https://sensillence.github.io/AIROBEST/)
 ## Data set
 The TAIGA dataset is available at https://doi.org/10.23729/fe7ce882-8125-44e7-b0cf-ae652d7ed0d5
 
+Download all the files in a directory /any/path/TAIGA .
+
 ## Getting started
 Make sure to install all the requirements, run: `pip install -r requirements.txt`
 
