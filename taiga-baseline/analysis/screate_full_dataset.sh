@@ -8,13 +8,16 @@
 #SBATCH -t 12:00:00
 
 id -a
+
 module purge
-module load pytorch/1.4
+module load pytorch
 module list
 
-python -u custom_split_data.py -patch_size 45 -new_patch_size 13 -data_path ../data/TAIGA
+python -u create_full_dataset.py
 
+# python -u inference.py -model_path ./checkpoint/FL_Pham310-270319-test/model_1.pt \
+#                        -save_dir ./inference/FL_Pham310-270319-test \
+#                        -gpu 0
 
 echo -e "\n ... printing job stats .... \n"
-
 used_slurm_resources.bash
