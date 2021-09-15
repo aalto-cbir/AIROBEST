@@ -12,7 +12,7 @@ module purge
 module load pytorch/1.4
 module list
 
-python -u custom_split_data.py -patch_size 45 -new_patch_size 13 -data_path ../data/TAIGA
+python -u custom_split_data.py -patch_size 45 -new_patch_size 13 -data_path ../../data/TAIGA
 
 
 echo -e "\n ... printing job stats .... \n"

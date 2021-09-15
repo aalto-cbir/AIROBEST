@@ -2,7 +2,54 @@ import torch
 import argparse
 import os
 import numpy as np
-from input.utils import split_data, get_patch
+import sys
+from sklearn.model_selection import train_test_split
+
+
+def get_patch(tensor, row, col, patch_size):
+    row1, col1 = row - patch_size // 2, col - patch_size // 2
+    row2, col2 = row + patch_size // 2, col + patch_size // 2
+    return tensor[row1:(row2 + 1), col1:(col2 + 1)]
+
+def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size, stride=1, mode='grid', is_mask = False):
+    train = []
+    val = []
+    test = []
+    origin = []
+    coords = []
+    random_state = 797  # 646, 919, 390, 101
+    R, C = mask.shape
+    print('Random seed:', random_state)
+    if mode == 'grid':
+        stride = patch_size
+    for i in range(patch_size // 2, rows - patch_size // 2, stride):
+        for j in range(patch_size // 2, cols - patch_size // 2, stride):
+            patch = get_patch(mask, i, j, patch_size)
+            if torch.min(patch) > 0:  # make sure there is no black pixels in the patch
+                if mode == 'random' or mode == 'grid':
+                    coords.append([i, j, 0, None, None])
+    if mode == 'random' or mode == 'grid':
+        train, val = train_test_split(coords, train_size=0.9, random_state=random_state, shuffle=True)
+
+    new_data = []
+    for sample in train:
+        r, c, _, _, _ = sample
+            # if aug == 'flip':
+                # code = 1 if np.random.random() > 0.5 else 2
+        code = 1
+        new_data.append([r, c, code, None, None])
+    
+    train = train + new_data
+    np.random.seed(123)
+    np.random.shuffle(train)
+    train = np.array(train)
+    val = np.array(val)
+    coords = np.array(coords)
+    print('Number of training pixels: %d, val pixels: %d' % (len(train), len(val)))
+    # print('Train', train[0:10])
+    # print('Val', val[0:10])
+    return train, test, val, coords
+
 
 def parse_args():
     """ Parsing arguments """
@@ -22,6 +69,7 @@ def parse_args():
     opt = parser.parse_args()
 
     return opt 
+
 def main():
     infer_opts = parse_args()
 
@@ -43,6 +91,7 @@ def main():
     idx = np.where(metadata['reg_label_names'] == 'leaf_area_index100')[0]
     mask = hyper_labels[:, :, out_cls + idx]
     print((mask != 0).sum().tolist())
+    np.save('../../data/mask.npy', mask)
 
     R, C, _ = mask.size()
 
