@@ -50,11 +50,12 @@ Training configurations:
 For other options, run: `python train.py -h` for detailed explanation.
 
 Visualization can be seen by opening [http://localhost:8097/](http://localhost:8097/) from web browser. You first need to login on Puhti with local forwarding: `ssh -L 8097:127.0.0.1:8097 username@puhti.csc.fi`
-- Run `sbatch strain.sh` to train on Puhti server.
-
-
-
+- `sbatch strain.sh` to train on Puhti server.
+- `sbatch sinference.sh` runs the inference on test data. 
 
 
 #### Analysis
-To be updated
+- `calculate_continuous_metrics.py` calculates the continuous metrics of the predicted values such as RMSE, rRMSE, rBias, R2, etc.
+- `calculate_categorical_metrics.py` calculates the categorical metrics of the predicted values such as micro and macro accuracies.
+- `predict_full_image.py` and `create_full_dataset` are used to predict every pixels of the hyperspectral image.
+- `calculate_evaluation_metrics_full_image.py`calculate the evaluation metrics for the whole hyperspectral image.
