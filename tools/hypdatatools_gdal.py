@@ -836,8 +836,8 @@ def vector_newfile( geometrylist, featuredict, filename_out=None, layername_out 
             localprintcommand( functionname + 'Shape file driver not found, quitting.\n' )
             all_set = False
         else: 
-            ds = driver.CreateDataSource( filename_out )
-            if ds is None:
+            outfile = driver.CreateDataSource( filename_out )
+            if outfile is None:
                 localprintcommand( functionname + 'Could not create output file, quitting.\n' )
                 all_set = False
             else:
