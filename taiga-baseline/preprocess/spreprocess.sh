@@ -15,11 +15,11 @@
 module purge
 #module load intelconda/python3.6-2018.3
 #module load python-env/intelpython3.6-2018.3 gcc/5.4.0
-module load pytorch
+module load pytorch/1.4
 module list
 
 
-SAVE_DIR=new_TAIGA
+SAVE_DIR=../data/TAIGA
 HYP_IMAGE=20170615_reflectance_mosaic_128b.hdr
 
 # . venv/bin/activate

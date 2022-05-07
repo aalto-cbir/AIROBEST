@@ -1,0 +1,224 @@
+{
+    "categorical": [
+        {
+            "id": 0,
+            "name": "fertility_class",
+            "values": {
+                "0": "None",
+                "1": "Herb-rich forest",
+                "2": "Herb-rich heath forest",
+                "3": "Mesic heath forest",
+                "4": "Sub-xeric heath forest",
+                "5": "Xeric heath forest",
+                "6": "Barren heath forest"
+            },
+            "original_values": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+            ],
+            "new_unique_values": [
+                {
+                    "index": 0,
+                    "value": 1
+                },
+                {
+                    "index": 1,
+                    "value": 2
+                },
+                {
+                    "index": 2,
+                    "value": 3
+                },
+                {
+                    "index": 3,
+                    "value": 4
+                },
+                {
+                    "index": 4,
+                    "value": 5
+                },
+                {
+                    "index": 5,
+                    "value": 6
+                },
+                {
+                    "index": 6,
+                    "value": 7
+                }
+            ]
+        },
+        {
+            "id": 1,
+            "name": "soil_class",
+            "values": {
+                "0": "None",
+                "1": "Mineral",
+                "2": "Organic"
+            },
+            "original_values": [
+                1,
+                2
+            ],
+            "new_unique_values": [
+                {
+                    "index": 0,
+                    "value": 1
+                },
+                {
+                    "index": 1,
+                    "value": 2
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "name": "main_tree_species_class",
+            "values": {
+                "0": "None",
+                "1": "Scots pine",
+                "2": "Norway spruce",
+                "3": "birch and other broadleaves"
+            },
+            "original_values": [
+                1,
+                2,
+                3
+            ],
+            "new_unique_values": [
+                {
+                    "index": 0,
+                    "value": 1
+                },
+                {
+                    "index": 1,
+                    "value": 2
+                },
+                {
+                    "index": 2,
+                    "value": 3
+                }
+            ]
+        }
+    ],
+    "num_classes": 9,
+    "regression": [
+        {
+            "id": 0,
+            "name": "fertility_class",
+            "min": 0,
+            "max": 3551,
+            "true_max": 4952,
+            "scaling_factor": 3551
+        },
+        {
+            "id": 1,
+            "name": "soil_class",
+            "min": 0,
+            "max": 3089,
+            "true_max": 3481,
+            "scaling_factor": 3089
+        },
+        {
+            "id": 2,
+            "name": "main_tree_species_class",
+            "min": 0,
+            "max": 6240,
+            "true_max": 23600,
+            "scaling_factor": 6240
+        },
+        {
+            "id": 3,
+            "name": "basal_area100_m2ha",
+            "min": 0,
+            "max": 2414,
+            "true_max": 2756,
+            "scaling_factor": 2414
+        },
+        {
+            "id": 4,
+            "name": "mean_dbh100_cm",
+            "min": 0,
+            "max": 100,
+            "true_max": 100,
+            "scaling_factor": 100
+        },
+        {
+            "id": 5,
+            "name": "stem_density_1ha",
+            "min": 0,
+            "max": 84,
+            "true_max": 100,
+            "scaling_factor": 84
+        },
+        {
+            "id": 6,
+            "name": "mean_height100_m",
+            "min": 0,
+            "max": 58,
+            "true_max": 100,
+            "scaling_factor": 58
+        },
+        {
+            "id": 7,
+            "name": "percentage_of_pine_",
+            "min": 0,
+            "max": 180,
+            "true_max": 285,
+            "scaling_factor": 180
+        },
+        {
+            "id": 8,
+            "name": "percentage_of_spruce_",
+            "min": 0,
+            "max": 966,
+            "true_max": 1303,
+            "scaling_factor": 966
+        },
+        {
+            "id": 9,
+            "name": "percentage_of_birch_",
+            "min": 0,
+            "max": 645,
+            "true_max": 858,
+            "scaling_factor": 645
+        },
+        {
+            "id": 10,
+            "name": "woody_biomass_tha",
+            "min": 0,
+            "max": 28168211,
+            "true_max": 28266550,
+            "scaling_factor": 28168211
+        },
+        {
+            "id": 11,
+            "name": "leaf_area_index100",
+            "min": 0,
+            "max": 243948,
+            "true_max": 309900,
+            "scaling_factor": 243948
+        },
+        {
+            "id": 12,
+            "name": "effective_leaf_area_index100",
+            "min": 0,
+            "max": 233709,
+            "true_max": 289700,
+            "scaling_factor": 233709
+        },
+        {
+            "id": 13,
+            "name": "standID",
+            "min": 0,
+            "max": 95217,
+            "true_max": 208088,
+            "scaling_factor": 95217
+        }
+    ],
+    "ignore_zero_labels": true
+}

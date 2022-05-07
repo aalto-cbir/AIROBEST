@@ -17,3 +17,4 @@ __pycache__/
 /source/cnn/checkpoint/
 /source/cnn/data/
 /source/cnn/slurm-jobs/
+/taiga-baseline/data
