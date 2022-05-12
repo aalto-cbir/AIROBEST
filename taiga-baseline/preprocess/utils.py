@@ -279,10 +279,11 @@ def visualize_label(target_labels, label_names, save_path):
 
         # plt.imsave(name, labels)
         nonzero_label = labels[labels > 0]
-        print('{} :Mean = {}, Std = {}'.format(label_names[i], np.mean(nonzero_label), np.std(nonzero_label)))
+        #print('{} : Mean = {}, Std = {}'.format(label_names[i], np.mean(nonzero_label), np.std(nonzero_label)))
         resize_img(name, 2000)
 
-    print('-------Done visualizing labels--------')
+    #print('-------Done visualizing labels--------')
+    print('Visualization saved to %s' % save_path)
 
 
 def plot_pred_vs_target(x, y, color, name, save_path, epoch):
@@ -429,7 +430,7 @@ def save_as_rgb(hyper_image, wavelength, path):
     i_b = abs(wavelength - 0.490).argmin()  # blue, closest to 490 nm
 
     hyp_rgb = hyper_image[:, :, [i_r, i_g, i_b]] / 8  # heuristically scale down the reflectance for good representation
-    print(np.max(hyp_rgb))
+    #print(np.max(hyp_rgb))
     # hyp_rgb[hyp_rgb > 255] = hyp_rgb[hyp_rgb > 255] / 5  # continue scaling down high values
     hyp_rgb[hyp_rgb > 255] = 255
     hyp_rgb[hyp_rgb == 0.0] = 255
@@ -447,6 +448,7 @@ def save_as_rgb(hyper_image, wavelength, path):
     img = Image.fromarray(hyp_rgb.astype('uint8'))
     #img.thumbnail((width, height), Image.ANTIALIAS)
     img.save('%s/rgb_image.png' % path)
+    print("Hyperspectral image saved in RGB format as %s/rgb_image.png" % path)
 
 
 def export_error_points(coords, rmsq_errors, geotrans, sum_errors, names, epoch, save_path):

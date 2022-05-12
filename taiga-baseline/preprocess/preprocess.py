@@ -246,9 +246,10 @@ def handle_class_balancing(percentage, unique_values, threshold=5, remove_minor_
     for i in minor_classes:
         index_dict[i] = combined_class_idx
 
-    print('Removed classes: {}, percentages: {}'.format(minor_classes, minor_percentages))
-    print('Final classes: {}, percentages: {}'.format(remaining_classes, remaining_percentages))
-    print('Index dict:', index_dict)
+    print('    removed classes: {}, percentages: {}'.format(minor_classes, minor_percentages))
+    print('    final classes: {}, percentages: {}'.format(remaining_classes, remaining_percentages))
+    print()
+    #print('Index dict:', index_dict)
     return index_dict, remaining_classes, remaining_percentages
 
 
@@ -280,7 +281,7 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
     R, C, _ = labels.shape
 
     fig, axs = plt.subplots((len(categorical_bands) + 1) // 2, 2)
-    print(axs)
+    #print(axs)
     
     for i, b in enumerate(categorical_bands):
         band = labels[:, :, b]
@@ -293,8 +294,10 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
             else:
                 unique_counts[0] -= zero_count
         percentage = 100 * unique_counts / np.sum(unique_counts)
-        print('Band {} ({}): unique values = {}, original distribution = {}, frequency = {}'
-              .format(b, cls_label_names[i], unique_values, " ".join(map("{:.2f}%".format, percentage)), unique_counts))
+        print('Band {} ({}):'.format(b, cls_label_names[i]))
+        print('    unique values = {}'.format(unique_values))
+        print('    original distribution = {}'.format(" ".join(map("{:.2f}%".format, percentage))))
+        print('    frequency = {}'.format(unique_counts))
 
         # plot_chart(axs[i // 2, i % 2], label_names[i], unique_values, percentage)  # original distribution
         # index_dict = dict([(val, idx) for (idx, val) in enumerate(unique_values)])
@@ -365,8 +368,13 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
             # band[band < min_val] = min_val  # this changes 0 values labels
             # band[zero_mask] = 0  # put back 0 values has been changed by min_val
 
-        print('Regression {}: lower bound = {}, upper bound = {}, true_max = {}'
-              .format(reg_label_names[b], min_val, max_val, true_max))
+        cls_num = len(categorical)
+        if reg_label_names[b] != "standID":
+            print('Band {} ({}): lower bound = {}, upper bound = {}, true_max = {}'
+                  .format(b + cls_num , reg_label_names[b], min_val, max_val, true_max))
+        else:
+            print('Band {} ({}): min = {}, max = {}'.format(b + cls_num, reg_label_names[b], min_val, true_max))
+        print()
         reg_stats[b] = {'min': min_val, 'max': max_val, 'true_max': true_max}
         if max_val != min_val:
             band = (band - min_val) / (max_val - min_val)
@@ -449,6 +457,7 @@ def main():
     band_names     = np.array(list(map(format_filename, band_names_raw)))
     forest_labels  = forest_data.open_memmap()
     print('  forestdata.shape =', *forest_labels.shape);
+    print()
 
     hyper_labels = get_hyper_labels(data_dir, hyper_image, forest_labels,
                                     hyper_gt, forest_gt, options.remove_bad_data)
@@ -466,6 +475,9 @@ def main():
         ids.append(np.where(band_names == species)[0])
     for i, task in enumerate(additional_tasks):
         band_names = np.append(band_names, task)
+
+        band_names_raw = np.append(band_names_raw, task)
+
         assert ids[i] >= 0, 'Cannot find index of %s' % species
         task_labels = hyper_labels[:, :, ids[i]]
         new_task = dbh_labels * task_labels
@@ -479,18 +491,17 @@ def main():
             assert idx>=0, 'Band "'+b+'" not in band names'
             assert b in forest_bands, 'Band "'+b+'" not in band descriptions'
             d = forest_bands[b]
-            assert d['type']=='categorical', 'Band "'+b+'" is not categorial'
+            assert d['type']=='categorical', 'Band "'+b+'" is not categorical'
             categorical_band_idxs.append(idx[0])
     else:
         for b, d in forest_bands.items():
             idx = np.asarray(band_names_raw==b).nonzero()[0]
-            print(d['type'])
             assert idx>=0, 'Band "'+b+'" in band descriptions but not in names'
             if d['type']=='categorical':
                 categorical_band_idxs.append(idx[0])
 
     cls_label_names = band_names[categorical_band_idxs]
-    print('  categorical_bands: (total '+str(len(categorical_band_idxs))+')\n')
+    print('  categorical variables: (total '+str(len(categorical_band_idxs))+')\n')
     for i in range(len(categorical_band_idxs)):
         name = cls_label_names[i]
         desc = forest_bands[name]
@@ -507,11 +518,40 @@ def main():
     n_reg_tasks = len(reg_task_indices)
     sum_pixels = np.sum(hyper_image, axis=-1)
     zero_count = R * C - np.count_nonzero(sum_pixels)
-    print('Zero count in image:', R, C, B, hyper_labels.shape, sum_pixels.shape, zero_count)
     hyper_labels[sum_pixels == 0] = 0
 
+    print('  regression variables: (total '+str(n_reg_tasks)+')\n')
+
+    reg_label_names_raw = band_names_raw[reg_task_indices]
+    for i in range(n_reg_tasks):
+        name_raw = reg_label_names_raw[i]
+        name_formatted = reg_label_names[i]
+        labels = hyper_labels[:, :, reg_task_indices[i]]
+        nonzero_label = labels[labels > 0]
+
+        if name_raw == "standID":
+            print('    {:2} {} {} [stand index]'.format(reg_task_indices[i], name_raw, name_formatted))
+            keys = ["Min", "Max"]
+            values = [np.amin(nonzero_label), np.amax(nonzero_label)]
+            for k, v in zip(keys, values):
+                print('      {} {}'.format(k, v))
+            print()
+            continue
+
+        if "dbh_" in name_raw:
+            print('    {:2} {} {} [derived variable]'.format(reg_task_indices[i], name_raw, name_formatted))
+        else:
+            print('    {:2} {} {}'.format(reg_task_indices[i], name_raw, name_formatted))
+        keys = ["Min", "Max", "Mean", "Std"]
+        values = [np.amin(nonzero_label), np.amax(nonzero_label), np.mean(nonzero_label), np.std(nonzero_label)]
+        for k, v in zip(keys, values):
+            print('      {} {}'.format(k, v))
+        print()
+
+    print('Zero count in hyperspectral data:', R, C, B, hyper_labels.shape, sum_pixels.shape, zero_count)
+    print()
+
     cls_labels = hyper_labels[:, :, categorical_band_idxs]
-    visualize_label(hyper_labels[:, :, -n_reg_tasks:], reg_label_names, save_dir)
 
     # Disable human data for now as there are only 19 Titta points in the map
     # hyper_labels = apply_human_data(options.human_data_path, hyper_labels, hyper_gt, band_names)
@@ -520,29 +560,35 @@ def main():
 
     print('Label visualization for classification tasks')
     visualize_label(cls_labels, cls_label_names, save_dir)
+    print()
     print('Label visualization for regression tasks')
     visualize_label(hyper_labels[:, :, -n_reg_tasks:], reg_label_names, save_dir)
+    print()
 
     image_norm_name = '%s/image_norm_%s.pt' % (save_dir, options.normalize_method)
     tgt_name = '%s/%s.pt' % (save_dir, options.tgt_file_name)
     metadata_name = '%s/%s.pt' % (save_dir, options.metadata_file_name)
     src_name = '%s/%s.pt' % (save_dir, options.src_file_name)
+    saved_file_names = [image_norm_name, tgt_name, metadata_name, src_name]
 
     metadata['cls_label_names'] = cls_label_names
     metadata['reg_label_names'] = reg_label_names
     metadata['ignore_zero_labels'] = options.ignore_zero_labels
-    print('Metadata values: ', metadata)
+    print('Metadata: ', metadata)
+    print()
     # with open('metadata.json', 'w', encoding='utf-8') as f:
     #     json.dump(metadata, f, ensure_ascii=False, indent=4)
     torch.save(metadata, metadata_name)
     torch.save(torch.from_numpy(hyper_labels), tgt_name)
     torch.save(torch.from_numpy(hyper_image), src_name)
-    print('Target file has shapes {}'.format(hyper_labels.shape))
+    print('Target file has shape {}'.format(hyper_labels.shape))
+    print()
     del forest_labels, forest_data
 
     wavelength = np.array(hyper_data.metadata['wavelength'], dtype=float)
 
     save_as_rgb(hyper_image, wavelength, save_dir)
+    print()
     # storing L2 norm of the image based on normalization method
     if options.normalize_method == 'l2norm_along_channel':  # l2 norm along *band* axis
         # norm = np.linalg.norm(hyper_image, axis=2)
@@ -555,9 +601,11 @@ def main():
     norm_inv[norm_inv > 0] = 1.0 / norm_inv[norm_inv > 0]  # invert positive values
     norm_inv = torch.from_numpy(norm_inv)
     torch.save(norm_inv, image_norm_name)
-    print('Source file has shapes {}'.format(norm_inv.shape))
-    print('Processed files are stored under "./data" directory')
-    print('End processing data...')
+    #print('Source file has shapes {}'.format(norm_inv.shape))
+    print('Processed files are stored under "../data" directory:')
+    for name in saved_file_names:
+        print('    %s' % name)
+    print('End preprocessing data...')
 
 
 if __name__ == "__main__":
