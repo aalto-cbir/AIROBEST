@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+#! /usr/bin/env bash
 
-# . ./venv-Hai/bin/activate
+. ../venv/bin/activate
 
 python -m visdom.server -port 8097
 

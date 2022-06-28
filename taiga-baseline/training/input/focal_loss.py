@@ -12,7 +12,7 @@ class FocalLoss(nn.Module):
         self.balance_param = balance_param
         self.weight = weight
 
-        print('Weight:', weight)
+        #print('Weight:', weight)
 
     def forward(self, prediction, target):
         log_pt = - F.cross_entropy(prediction, target, weight=self.weight)

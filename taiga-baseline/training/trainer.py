@@ -10,7 +10,7 @@ from sklearn.metrics import roc_auc_score
 from input.utils import compute_accuracy, compute_cls_metrics, compute_reg_metrics
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-from tools.hypdatatools_img import get_geotrans
+#from tools.hypdatatools_img import get_geotrans
 
 
 class Trainer(object):
@@ -26,12 +26,12 @@ class Trainer(object):
         self.visualizer = visualizer
         self.checkpoint = checkpoint
         self.hyper_labels_reg = hyper_labels_reg
-        self.hypGt = get_geotrans(self.options.hyper_data_header)
+        #self.hypGt = get_geotrans(self.options.hyper_data_header)
         self.save_every = 10  # specify number of epochs to save model
 
         save_dir = self.options.save_dir or self.options.model
-        self.ckpt_path = './checkpoint/{}'.format(save_dir)
-        self.image_path = './checkpoint/{}/images'.format(save_dir)
+        self.ckpt_path = '../checkpoint/{}'.format(save_dir)
+        self.image_path = '../checkpoint/{}/images'.format(save_dir)
         if not os.path.exists(self.ckpt_path):
             os.makedirs(self.ckpt_path)
         if not os.path.exists(self.image_path):
@@ -91,6 +91,8 @@ class Trainer(object):
 
         print('Start training from epoch: ', start_epoch)
         for e in range(start_epoch, epoch + 1):
+            print('Epoch {} starts'.format(e))
+            print()
             # set model in training mode
             self.modelTrain.train()
             self.modelTrain.model.train()
@@ -415,4 +417,4 @@ class Trainer(object):
             'options': self.options
         }
         torch.save(state, '{}/model_e{}_{:.5f}.pt'.format(self.ckpt_path, epoch, avg_mae))
-        print('Saved model at epoch %d' % epoch)
+        print('Saved model at epoch {} at {}/model_e{}_{:.5f}.pt'.format(epoch, self.ckpt_path, epoch, avg_mae))

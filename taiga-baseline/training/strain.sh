@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#! /usr/bin/env bash
 
 #SBATCH -J train5
 #SBATCH --mem-per-cpu 150000
@@ -9,14 +9,35 @@
 
 id -a
 module purge
-module load pytorch/1.4
+module load pytorch/1.10
 module list
-
-#env
 DATA_DIR=../data/TAIGA
+. ../venv/bin/activate
 
-python -u train.py -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt -src_norm_multiplier ${DATA_DIR}/image_norm_l2norm_along_channel.pt -tgt_path ${DATA_DIR}/hyperspectral_tgt_normalized.pt -metadata ${DATA_DIR}/metadata.pt -hyper_data_header /scratch/project_2001284/hyperspectral/20170615_reflectance_mosaic_128b.hdr -input_normalize_method minmax_scaling -report_frequency 100 -lr 0.0001 -data_split_path ${DATA_DIR}/data-split -gpu 0 -epoch 150 -model PhamModel3layers4 -patch_size 27 -patch_stride 27 -batch_size 32 -save_dir test_model -loss_balancing equal_weights -class_balancing focal_loss -augmentation flip
-
+python3 -u train.py \
+	    -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt \
+	    -src_norm_multiplier ${DATA_DIR}/image_norm_l2norm_along_channel.pt \
+	    -tgt_path ${DATA_DIR}/hyperspectral_tgt_normalized.pt \
+	    -metadata ${DATA_DIR}/metadata.pt \
+        -hyper_data_header /scratch/project_2001284/TAIGA/20170615_reflectance_mosaic_128b.hdr \
+	    -data_split_path ${DATA_DIR}/data-split \
+	    -save_dir test_model \
+	    -report_frequency 100 \
+	    -model PhamModel3layers4 \
+	    -input_normalize_method minmax_scaling \
+	    -loss_balancing equal_weights \
+	    -class_balancing focal_loss \
+	    -augmentation flip \
+	    -lr 0.0001 \
+	    -gpu 0 \
+	    -epoch 150 \
+	    -patch_size 45 \
+	    -patch_stride 13 \
+	    -batch_size 32 \
+        -use_visdom \
+        -visdom_server http://puhti-login2.csc.fi \
+        -train_from ../checkpoint/test_model/model_e136_0.04546.pt
+    
 # -keep_best 10 -visdom_server http://puhti-login2.csc.fi/ -ignored_cls_tasks 4 5 6 7 8 -ignored_reg_tasks 0 1 2 3 4 5 6 7 8 9 10 11 12
 # -ignored_cls_tasks 4 5 6 7 8 -ignored_reg_tasks 0 1 2 3 4 5 6 7 8 9 10 11 12
 # -ignored_cls_tasks 0 1 2 3 4 5 6 7 8
@@ -32,8 +53,5 @@ python -u train.py -hyper_data_path ${DATA_DIR}/hyperspectral_src.pt -src_norm_m
 #                    -ignored_reg_tasks 0 1 2 3 4 5 6 7 9 10 11 12 13 14
 
 echo -e "\n ... printing job stats .... \n"
-used_slurm_resources.bash
 
-
-
-# python -u train.py  -hyper_data_path ./data/subsetA-full-bands/hyperspectral_src.pt -src_norm_multiplier ./data/subsetA-full-bands/image_norm_l2norm_along_channel.pt -tgt_path ./data/subsetA-full-bands/hyperspectral_tgt_normalized.pt -metadata ./data/subsetA-full-bands/metadata.pt -input_normalize_method minmax_scaling -report_frequency 100 -visdom_server http://localhost -use_visdom -lr 0.0001 -data_split_path ./data/subsetA-full-bands/splits-orig -gpu 0 -epoch 200 -model PhamModel3layers10 -patch_size 91 -patch_stride 91 -batch_size 64 -save_dir FL_Pham310-110619-ew-no-aug -loss_balancing equal_weights -class_balancing focal_loss -train_from ./checkpoint/FL_Pham310-110619-ew-no-aug/model_1.pt
+seff $SLURM_JOB_ID

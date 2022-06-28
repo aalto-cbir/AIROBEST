@@ -13,6 +13,7 @@ import numpy as np
 import spectral
 import torch
 import matplotlib.pyplot as plt
+import pprint
 
 from utils import hyp2for, world2envi_p, save_as_rgb, visualize_label, format_filename
 
@@ -65,12 +66,12 @@ def parse_args():
                         required=False, type=str,
                         default='<save_dir>/metadata',
                         help='Save metadata of the processed data with this name')
-    parser.add_argument('--normalize_method',
+    parser.add_argument('--input_normalize_method',
                         type=str,
                         choices=['l2norm_along_channel', 'l2norm_channel_wise'],
                         default='l2norm_along_channel',
                         help='Normalization method for input image')
-    parser.add_argument('--label_normalize_method',
+    parser.add_argument('--output_normalize_method',
                         type=str,
                         choices=['minmax_scaling', 'clip'],  # TODO: support z-score
                         default='clip',
@@ -346,10 +347,10 @@ def process_labels(labels, categorical_bands, ignored_bands, cls_label_names, re
     for b in range(labels.shape[2]):
         band = labels[:, :, b]
         true_max = np.max(band)
-        if options.label_normalize_method == 'minmax_scaling':
+        if options.output_normalize_method == 'minmax_scaling':
             max_val = true_max
             min_val = np.min(band)
-        elif options.label_normalize_method == 'clip':
+        elif options.output_normalize_method == 'clip':
             value_matrix = band[band > 0] if options.ignore_zero_labels else band
             # use 2 and 98 percentile as thresholding values
             # TODO: clip values can be passed as arguments
@@ -565,16 +566,18 @@ def main():
     visualize_label(hyper_labels[:, :, -n_reg_tasks:], reg_label_names, save_dir)
     print()
 
-    image_norm_name = '%s/image_norm_%s.pt' % (save_dir, options.normalize_method)
+    image_norm_name = '%s/image_norm_%s.pt' % (save_dir, options.input_normalize_method)
     tgt_name = '%s/%s.pt' % (save_dir, options.tgt_file_name)
     metadata_name = '%s/%s.pt' % (save_dir, options.metadata_file_name)
     src_name = '%s/%s.pt' % (save_dir, options.src_file_name)
-    saved_file_names = [image_norm_name, tgt_name, metadata_name, src_name]
+    saved_file_names = [image_norm_name, tgt_name, src_name]
 
     metadata['cls_label_names'] = cls_label_names
     metadata['reg_label_names'] = reg_label_names
     metadata['ignore_zero_labels'] = options.ignore_zero_labels
-    print('Metadata: ', metadata)
+
+    print("Metadata is saved to %s" % metadata_name)
+    pprint.pprint(metadata)
     print()
     # with open('metadata.json', 'w', encoding='utf-8') as f:
     #     json.dump(metadata, f, ensure_ascii=False, indent=4)
@@ -590,12 +593,12 @@ def main():
     save_as_rgb(hyper_image, wavelength, save_dir)
     print()
     # storing L2 norm of the image based on normalization method
-    if options.normalize_method == 'l2norm_along_channel':  # l2 norm along *band* axis
+    if options.input_normalize_method == 'l2norm_along_channel':  # l2 norm along *band* axis
         # norm = np.linalg.norm(hyper_image, axis=2)
         norm_inv = np.zeros((R, C))
         for i in range(0, R):
             norm_inv[i] = np.linalg.norm(hyper_image[i, :, :], axis=1)
-    elif options.normalize_method == 'l2norm_channel_wise':  # l2 norm separately for each channel
+    elif options.input_normalize_method == 'l2norm_channel_wise':  # l2 norm separately for each channel
         norm_inv = np.linalg.norm(hyper_image, axis=(0, 1))
 
     norm_inv[norm_inv > 0] = 1.0 / norm_inv[norm_inv > 0]  # invert positive values
@@ -605,6 +608,8 @@ def main():
     print('Processed files are stored under "../data" directory:')
     for name in saved_file_names:
         print('    %s' % name)
+
+    print()
     print('End preprocessing data...')
 
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#! /usr/bin/env bash
 
 #SBATCH -J create_full_dataset
 #SBATCH --mem-per-cpu 150000
@@ -9,12 +9,13 @@
 
 id -a
 module purge
-module load pytorch/1.4
+module load pytorch/1.10
 module list
+
+. ../../venv/bin/activate
 
 python -u custom_split_data.py -patch_size 45 -new_patch_size 13 -data_path ../../data/TAIGA
 
-
 echo -e "\n ... printing job stats .... \n"
 
-used_slurm_resources.bash
+seff $SLURM_JOB_ID

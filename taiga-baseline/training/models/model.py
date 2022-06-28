@@ -805,6 +805,7 @@ class PhamModel3layers4(nn.Module):
         self.n_cls = len(categorical.keys())
         self.n_reg = out_reg
         for idx, (key, values) in enumerate(categorical.items()):
+            #print(idx, key, values, len(values))
             setattr(self, 'fc_cls_{}_1'.format(idx), torch.nn.Linear(512, 300))
             setattr(self, 'fc_cls_{}_2'.format(idx), torch.nn.Linear(300, len(values)))
 
@@ -853,7 +854,12 @@ class PhamModel3layers4(nn.Module):
             layer1 = getattr(self, 'fc_cls_{}_1'.format(i))
             layer2 = getattr(self, 'fc_cls_{}_2'.format(i))
             x_cls = F.relu(layer1(x))
-            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls))), 1)
+            pred_cls = torch.cat((pred_cls, F.softmax(layer2(x_cls), dim=1)), 1)
+            #print("x cls:", x_cls)
+            #print("layer 2(x):", layer2(x_cls))
+            #print("pred:", i, pred_cls)
+            #print("layer 1:", layer1)
+            #print("layer 2:", layer2)
             # pred_cls = torch.cat((pred_cls, layer2(x_cls)), 1)
 
         # for regression task

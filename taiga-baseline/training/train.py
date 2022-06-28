@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
     Training
@@ -14,6 +14,7 @@ import torch.optim as optim
 import visdom
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchsummary import summary
+import pprint
 
 from input.data_loader import get_loader
 from input.focal_loss import FocalLoss
@@ -139,6 +140,7 @@ def main():
     print('System info: ', sys.version)
     print('Numpy version: ', np.__version__)
     print('Torch version: ', torch.__version__)
+    print()
     #######
     checkpoint = None
     options = parse_args()
@@ -153,7 +155,10 @@ def main():
         options.model = ckpt_options.model
 
     # TODO: check for minimum patch_size
-    print('Training options: {}'.format(options))
+    #print('Training options: {}'.format(options))
+    print('Training options:')
+    pprint.pprint(vars(options))
+    print()
     device = get_device(options.gpu)
 
     visualize = options.use_visdom
@@ -176,11 +181,13 @@ def main():
     out_cls = metadata['num_classes']
     idx = np.where(metadata['reg_label_names'] == 'leaf_area_index100')[0]
     mask = hyper_labels[:, :, out_cls + idx] if metadata['ignore_zero_labels'] else norm_inv
-    print((mask != 0).sum().tolist())
+    #print((mask != 0).sum().tolist())
     # remove ignored tasks
     hyper_labels_cls, hyper_labels_reg = remove_ignored_tasks(hyper_labels, options, metadata)
     categorical = metadata['categorical']
-    print('Metadata values', metadata)
+    print('Metadata values:')
+    pprint.pprint(metadata)
+    print()
     out_cls = metadata['num_classes']
     out_reg = hyper_labels_reg.shape[-1]
 
@@ -193,7 +200,8 @@ def main():
     R, C, num_bands = hyper_image.shape
 
     if os.path.isfile(options.data_split_path + '/train_set.npy') and os.path.isfile(options.data_split_path + '/val_set.npy'):
-        print('Loading data split...')
+        #print('Loading data split...')
+        print('Loading data split from ' + options.data_split_path)
         train_set = np.load(options.data_split_path + '/train_set.npy', allow_pickle=True)
         val_set = np.load(options.data_split_path + '/val_set.npy', allow_pickle=True)
         test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
@@ -310,7 +318,8 @@ def main():
     #                             patch_size=options.patch_size,
     #                             shuffle=False)
 
-    print('Dataset sizes: train={}, val={}'.format(len(train_loader.dataset), len(val_loader.dataset)))
+    print('Dataset sizes: train={}, val={}, test={} patches'.
+            format(len(train_loader.dataset), len(val_loader.dataset), len(test_loader.dataset)))
 
     model = model.to(device)
     # run model summary before converting model to DataParallel

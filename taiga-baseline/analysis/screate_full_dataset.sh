@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#! /usr/bin/env bash
 
 #SBATCH -J create_full_dataset
 #SBATCH --mem-per-cpu 150000

@@ -236,9 +236,10 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
     np.random.shuffle(train)
     train = np.array(train)
     val = np.array(val)
-    print('Number of training pixels: %d, val pixels: %d' % (len(train), len(val)))
-    print('Train', train[0:10])
-    print('Val', val[0:10])
+    #print('Number of training pixels: %d' % len(train))
+    #print('Number of validation pixels: %d\n' % len(val))
+    #print('Train', train[0:10])
+    #print('Val', val[0:10])
     return train, test, val, coords
 
 
@@ -490,11 +491,11 @@ def compute_data_distribution(labels, dataset, categorical):
     if labels.nelement() == 0:
         return []
     # TODO: make sure training and validation sets include all classes for each classification tasks
-    print('start getting data labels')
+    #print('start getting data labels')
     data_labels = []  # labels of data points in the dataset
     for (r, c, _, _, _) in dataset:
         data_labels.append(labels[r, c, :])
-    print('end getting data labels')
+    #print('end getting data labels')
 
     data_labels = torch.stack(data_labels, dim=0)
     weights = []
@@ -583,7 +584,7 @@ def remove_ignored_tasks(hyper_labels, options, metadata):
     start = 0
     categorical = metadata['categorical'].copy()
 
-    valid_indices = np.array(options.ignored_cls_tasks)
+    valid_indices = np.array(options.ignored_cls_tasks, dtype=int)
     valid_indices = valid_indices[valid_indices < len(metadata['cls_label_names'])]
     metadata['cls_label_names'] = np.delete(metadata['cls_label_names'], valid_indices)
     for idx, (key, values) in enumerate(categorical.items()):
@@ -595,7 +596,7 @@ def remove_ignored_tasks(hyper_labels, options, metadata):
             metadata['num_classes'] -= n_classes
         start += n_classes
 
-    valid_indices = np.array(options.ignored_reg_tasks)
+    valid_indices = np.array(options.ignored_reg_tasks, dtype=int)
     valid_indices = valid_indices[valid_indices < len(metadata['reg_label_names'])]
     metadata['reg_label_names'] = np.delete(metadata['reg_label_names'], valid_indices)
     for idx in range(start, hyper_labels.shape[-1]):
@@ -643,7 +644,7 @@ def compute_cls_metrics(pred_cls_indices, tgt_cls_indices, options, categorical,
             auc_score = multiclass_roc_auc_score(tgt_cls_indices[:, i], pred_cls_indices[:, i])
             print('Precision:', precision)
             print('Recall:', recall)
-            print('F1 score', f1)
+            print('F1 score:', f1)
             print('ROC-AUC score:', auc_score)
 
         avg_balanced_accuracy = np.around(np.mean(balanced_accuracies), decimals=2)

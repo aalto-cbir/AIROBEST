@@ -18,3 +18,4 @@ __pycache__/
 /source/cnn/data/
 /source/cnn/slurm-jobs/
 /taiga-baseline/data
+/taiga-baseline/venv

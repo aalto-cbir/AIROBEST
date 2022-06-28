@@ -18,8 +18,7 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
     origin = []
     coords = []
     random_state = 797  # 646, 919, 390, 101
-    R, C = mask.shape
-    print('Random seed:', random_state)
+    R, C, _ = mask.shape
     if mode == 'grid':
         stride = patch_size
     for i in range(patch_size // 2, rows - patch_size // 2, stride):
@@ -29,17 +28,18 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
                 if mode == 'random' or mode == 'grid':
                     coords.append([i, j, 0, None, None])
     if mode == 'random' or mode == 'grid':
+        print('Random seed:', random_state)
         train, val = train_test_split(coords, train_size=0.9, random_state=random_state, shuffle=True)
 
     new_data = []
-    for sample in train:
-        r, c, _, _, _ = sample
-            # if aug == 'flip':
-                # code = 1 if np.random.random() > 0.5 else 2
-        code = 1
-        new_data.append([r, c, code, None, None])
-    
-    train = train + new_data
+    #for sample in train:
+    #    r, c, _, _, _ = sample
+    #        # if aug == 'flip':
+    #            # code = 1 if np.random.random() > 0.5 else 2
+    #    code = 1
+    #    new_data.append([r, c, code, None, None])
+    #
+    #train = train + new_data
     np.random.seed(123)
     np.random.shuffle(train)
     train = np.array(train)
@@ -90,8 +90,8 @@ def main():
     out_cls = metadata['num_classes']
     idx = np.where(metadata['reg_label_names'] == 'leaf_area_index100')[0]
     mask = hyper_labels[:, :, out_cls + idx]
-    print((mask != 0).sum().tolist())
-    np.save('../../data/mask.npy', mask)
+    print("a: ", (mask != 0).sum().tolist(), "idx:", idx, out_cls)
+    np.save(path + '/mask.npy', mask)
 
     R, C, _ = mask.size()
 
@@ -105,7 +105,7 @@ def main():
     for i in range(len(test_mask)):
         mask[test_mask[i][0] - patch_size // 2 : test_mask[i][0] + patch_size // 2 + 1, test_mask[i][1] - patch_size // 2 : test_mask[i][1] + patch_size // 2 + 1] = 0
 
-    print((mask != 0).sum().tolist())
+    print("b: ", (mask != 0).sum().tolist())
 
 
     train_set, test_set, val_set, origin_set = split_data(R, C, mask, [], [], new_patch_size, new_patch_size, 'grid', True)
