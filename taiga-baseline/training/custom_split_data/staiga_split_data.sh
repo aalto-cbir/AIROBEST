@@ -14,7 +14,7 @@ module list
 
 . ../../venv/bin/activate
 
-python3 -u eelis_split_data.py
+python3 -u taiga_split_data.py
 
 echo -e "\n ... printing job stats .... \n"
 

@@ -15,8 +15,13 @@ from sklearn.model_selection import train_test_split
 import copy
 
 data_path = '../../data/TAIGA/'
+save_path = data_path + 'data-split-aug-horizontal/'
+
 splitting_patch_size = 13
-flip = False
+
+flip = True
+flip_mode = "horizontal" # can be horizontal, vertical, or mixed
+
 random_state = 797  # 646, 919, 390, 101
 print('Random seed:', random_state)
 
@@ -48,7 +53,12 @@ def split_data(rows, cols, mask, hyper_labels_cls, hyper_labels_reg, patch_size,
         new_data = []
         for sample in train:
             r, c, _, _, _ = sample
-            code = 1 if np.random.random() > 0.5 else 2
+            if flip_mode == "horizontal":
+                code = 1
+            elif flip_mode == "vertical":
+                code = 2
+            else:
+                code = 1 if np.random.random() > 0.5 else 2
             new_data.append([r, c, code, None, None])
         
         train = train + new_data
@@ -77,7 +87,7 @@ def draw2(arr, title, save_path = "./out/", cmap="viridis", isCustomCmap = False
     plt.imsave(save_path + title, arr, cmap=cmap)
 
 
-forest_stand_data = pd.read_csv('./eelis_forest_stand_data.csv')
+forest_stand_data = pd.read_csv('./taiga_forest_stand_data.csv')
 
 eelis_standid = forest_stand_data['standid'].tolist()
 eelis_set = forest_stand_data['set'].tolist()
@@ -94,11 +104,11 @@ mask = np.load('../../data/TAIGA/mask.npy').squeeze()
 #print("stand id shape: ", complete_stand_id.shape)
 #print("mask shape: ", mask.shape)
 hai_mask = np.divide(complete_stand_id * mask, mask, out=np.zeros_like(complete_stand_id * mask), where=mask!=0)
-draw2(hai_mask, "hai_mask.png", "../../data/TAIGA/", "rainbow", True)
+draw2(hai_mask, "hai_mask.png", save_path, "rainbow", True)
 
 R, C = hai_mask.shape
 #print("hai mask shape:", hai_mask.shape)
-np.save(data_path + 'hai_mask.npy', hai_mask)
+np.save(save_path + 'hai_mask.npy', hai_mask)
 
 # Eelis mask
 eelis_mask = copy.deepcopy(hai_mask)
@@ -113,7 +123,7 @@ eelis_mask[eelis_mask > -1] = 0
 eelis_mask[eelis_mask == -1] = 1 # training 1
 eelis_mask[eelis_mask == -2] = 2 # holdout / test 2
 
-draw2(eelis_mask, "eelis_mask.png", "../../data/TAIGA/", "rainbow", True)
+draw2(eelis_mask, "eelis_mask.png", save_path, "rainbow", True)
 
 
 # for i in range(len(eelis_standid)):
@@ -124,17 +134,17 @@ draw2(eelis_mask, "eelis_mask.png", "../../data/TAIGA/", "rainbow", True)
 eelis_train_stand_mask = copy.deepcopy(eelis_mask)
 eelis_train_stand_mask[eelis_train_stand_mask == 2] = 0
 
-draw2(eelis_train_stand_mask, "eelis_train_stand_mask.png", "../../data/TAIGA/", "rainbow", True)
+draw2(eelis_train_stand_mask, "eelis_train_stand_mask.png", save_path, "rainbow", True)
 
 eelis_test_stand_mask = copy.deepcopy(eelis_mask)
 eelis_test_stand_mask[eelis_test_stand_mask == 1] = 0
 
-draw2(eelis_test_stand_mask, "eelis_test_stand_mask.png", "../../data/TAIGA/", "rainbow", True)
+draw2(eelis_test_stand_mask, "eelis_test_stand_mask.png", save_path, "rainbow", True)
 
-np.save(data_path + 'eelis_train_stand_mask.npy', eelis_train_stand_mask)
+np.save(save_path + 'eelis_train_stand_mask.npy', eelis_train_stand_mask)
 #print("eelis train stand mask shape", eelis_train_stand_mask.shape)
 
-np.save(data_path + 'eelis_test_stand_mask.npy', eelis_test_stand_mask)
+np.save(save_path + 'eelis_test_stand_mask.npy', eelis_test_stand_mask)
 #print("eelis test stand mask shape", eelis_test_stand_mask.shape)
 
 eelis_train_set, _, eelis_val_set, eelis_origin_set = split_data(R, C, torch.Tensor(eelis_train_stand_mask), [], [], splitting_patch_size, splitting_patch_size, 'grid', False)
@@ -142,9 +152,9 @@ eelis_train_set, _, eelis_val_set, eelis_origin_set = split_data(R, C, torch.Ten
 _, _, _, eelis_test_set = split_data(R, C, torch.Tensor(eelis_test_stand_mask), [], [], splitting_patch_size, splitting_patch_size, 'grid', False)
 
 
-np.save(data_path + '/train_set.npy', eelis_train_set)
-np.save(data_path + '/test_set.npy', eelis_test_set)
-np.save(data_path + '/val_set.npy', eelis_val_set)
+np.save(save_path + '/train_set.npy', eelis_train_set)
+np.save(save_path + '/test_set.npy', eelis_test_set)
+np.save(save_path + '/val_set.npy', eelis_val_set)
 
 #stands_origin = set()
 #for x, y, _, _, _ in eelis_origin_set:
@@ -175,6 +185,7 @@ print("train set patches:", eelis_train_set.shape[0])
 print("val set patches:", eelis_val_set.shape[0])
 print("test set patches:", eelis_test_set.shape[0])
 print()
+print("Files saved to", save_path)
 print("End splitting.")
 
 # ----- 

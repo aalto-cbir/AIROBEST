@@ -65,6 +65,9 @@ def parse_args():
     parser.add_argument('-data_path', type=str, 
                         required=True, default='',
                         help="Path to data")
+    parser.add_argument('-save_path', type=str, 
+                        required=True, default='',
+                        help="Path to save outputs")
 
     opt = parser.parse_args()
 
@@ -76,9 +79,13 @@ def main():
     patch_size = infer_opts.patch_size
     new_patch_size = infer_opts.new_patch_size
     path = infer_opts.data_path
+    save_path = infer_opts.save_path
 
     metadata = torch.load(path + '/metadata.pt')
     hyper_labels = torch.load(path + '/hyperspectral_tgt_normalized.pt')
+
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
 
     # 1. Split data patch size 27 => (optional, add val + test in previous split to mask)
     # 2. Add to mask
@@ -110,10 +117,10 @@ def main():
 
     train_set, test_set, val_set, origin_set = split_data(R, C, mask, [], [], new_patch_size, new_patch_size, 'grid', True)
 
-    np.save(path + '/train_set.npy', train_set)
-    np.save(path + '/test_set.npy', test_mask)
-    np.save(path + '/val_set.npy', val_mask)
-    np.save(path + '/origin_set.npy', origin_set)
+    np.save(save_path + '/train_set.npy', train_set)
+    np.save(save_path + '/test_set.npy', test_mask)
+    np.save(save_path + '/val_set.npy', val_mask)
+    np.save(save_path + '/origin_set.npy', origin_set)
 
     print('Train set: ', len(train_set))
     print('Test set: ', len(test_set))
@@ -131,7 +138,7 @@ def main():
 
     new_train_set = np.delete(train_set, index_to_be_deleted, 0)
 
-    np.save(path + '/train_set.npy', new_train_set)
+    np.save(save_path + '/train_set.npy', new_train_set)
     print('New train set: ', len(new_train_set))
 
 if __name__ == "__main__":

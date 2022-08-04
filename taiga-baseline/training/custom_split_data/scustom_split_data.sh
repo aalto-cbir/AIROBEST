@@ -11,10 +11,14 @@ id -a
 module purge
 module load pytorch/1.10
 module list
-
+DATA_DIR=../../data/TAIGA
 . ../../venv/bin/activate
 
-python -u custom_split_data.py -patch_size 45 -new_patch_size 13 -data_path ../../data/TAIGA
+python -u custom_split_data.py \
+       -patch_size 45 \
+       -new_patch_size 13 \
+       -data_path ${DATA_DIR} \
+       -save_path ${DATA_DIR}/data-split
 
 echo -e "\n ... printing job stats .... \n"
 
