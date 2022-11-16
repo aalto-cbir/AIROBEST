@@ -7,11 +7,13 @@
 #SBATCH -t 1:30:00
 #SBATCH --mem-per-cpu 200000
 
-module purge
-module load pytorch/1.10
-module list
 TAIGA_DIR=/scratch/project_2001284/TAIGA
 DATA_DIR=../data/TAIGA
+
+module -q purge
+module load pytorch
+module list
+
 . ../venv/bin/activate
 
 python3 -u preprocess.py \
@@ -26,7 +28,8 @@ python3 -u preprocess.py \
 	    --output_normalize_method clip \
 	    --ignore_zero_labels
 
-echo -e "\n ... printing job stats .... \n"
-
-seff $SLURM_JOB_ID
+if [[ -v SLURM_JOB_ID ]]; then
+   echo -e "\n ... printing job stats .... \n"
+   seff $SLURM_JOB_ID
+fi
 
