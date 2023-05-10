@@ -16,6 +16,10 @@ module list
 
 . ../venv/bin/activate
 
+if [ ! -e $DATA_DIR/source ] ; then
+   ln -s $TAIGA_DIR $DATA_DIR/source
+fi
+
 python3 -u preprocess.py \
 	    --data_dir $TAIGA_DIR \
 	    --hyperspec 20170615_reflectance_mosaic_128b.hdr \

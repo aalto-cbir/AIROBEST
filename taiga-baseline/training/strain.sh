@@ -35,10 +35,10 @@ python3 -u train.py \
 	    -epoch 150 \
 	    -patch_size 45 \
 	    -patch_stride 13 \
-	    -batch_size 32 \
-	    -use_visdom \
-	    -visdom_server http://puhti-login2.csc.fi \
-	    -train_from ../checkpoint/test_model/model_e136_0.04546.pt
+	    -batch_size 32
+#	    -use_visdom \
+#	    -visdom_server http://puhti-login2.csc.fi \
+#	    -train_from ../checkpoint/test_model/model_e136_0.04546.pt
 
 if [[ -v SLURM_JOB_ID ]]; then
     echo -e "\n ... printing job stats .... \n"

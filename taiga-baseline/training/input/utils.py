@@ -533,8 +533,12 @@ def compute_data_distribution(labels, dataset, categorical):
 def get_device(id):
     device = torch.device('cpu')
     if id > -1 and torch.cuda.is_available():
-        device = torch.device('cuda:{}'.format(id))
-    print("Number of GPUs available %i" % torch.cuda.device_count())
+        if torch.version.cuda:
+            print("Number of NVIDIA CUDA GPUs available %i" % torch.cuda.device_count())
+            device = torch.device('cuda:{}'.format(id))
+        if torch.version.hip:
+            print("Number of AMD HIP GPUs available %i" % torch.cuda.device_count())
+            device = torch.device('cuda:{}'.format(id))
     print("Training on device: %s" % device)
     return device
 

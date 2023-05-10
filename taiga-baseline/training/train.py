@@ -199,25 +199,27 @@ def main():
 
     R, C, num_bands = hyper_image.shape
 
-    if os.path.isfile(options.data_split_path + '/train_set.npy') and os.path.isfile(options.data_split_path + '/val_set.npy'):
-        #print('Loading data split...')
-        print('Loading data split from ' + options.data_split_path)
+    trainnpy = options.data_split_path + '/train_set.npy'
+    valnpy   = options.data_split_path + '/val_set.npy'
+    if os.path.isfile(trainnpy) and os.path.isfile(valnpy):
+        print('Loading data split from', trainnpy, 'and', valnpy)
         train_set = np.load(options.data_split_path + '/train_set.npy', allow_pickle=True)
-        val_set = np.load(options.data_split_path + '/val_set.npy', allow_pickle=True)
-        test_set = np.load(options.data_split_path + '/test_set.npy', allow_pickle=True)
+        val_set   = np.load(options.data_split_path + '/val_set.npy',   allow_pickle=True)
+        test_set  = np.load(options.data_split_path + '/test_set.npy',  allow_pickle=True)
         # origin_set = np.load(options.data_split_path + '/origin_set.npy', allow_pickle=True)
     else:
+        print('Creating data split to', options.data_split_path)
         train_set, test_set, val_set, origin_set = split_data(R, C, mask, hyper_labels_cls, hyper_labels_reg, options.patch_size, options.patch_stride)
         if not os.path.exists(options.data_split_path):
             os.makedirs(options.data_split_path)
-        np.save(options.data_split_path + '/train_set.npy', train_set)
-        np.save(options.data_split_path + '/val_set.npy', val_set)
-        np.save(options.data_split_path + '/test_set.npy', test_set)
+        np.save(options.data_split_path + '/train_set.npy',  train_set)
+        np.save(options.data_split_path + '/val_set.npy',    val_set)
+        np.save(options.data_split_path + '/test_set.npy',   test_set)
         np.save(options.data_split_path + '/origin_set.npy', origin_set)
 
-    print('Data distribution on training set')
+    print('Data distribution on training set, total', len(train_set))
     class_weights = compute_data_distribution(hyper_labels_cls, train_set, categorical)
-    print('Data distribution on validation set')
+    print('Data distribution on validation set, total', len(val_set))
     _ = compute_data_distribution(hyper_labels_cls, val_set, categorical)
 
     # Model construction
@@ -305,7 +307,7 @@ def main():
                              is_3d_convolution=True,
                              augmentation=None,
                              patch_size=options.patch_size,
-                             shuffle=True)
+                             shuffle=False)
     # origin_loader = get_loader(hyper_image,
     #                             multiplier,
     #                             hyper_labels_cls,
