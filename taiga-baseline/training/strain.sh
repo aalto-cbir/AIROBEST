@@ -7,7 +7,6 @@
 #SBATCH -t 72:00:00
 #SBATCH --mem-per-cpu 150000
 
-TAIGA_DIR=/scratch/project_2001284/TAIGA
 DATA_DIR=../data/TAIGA
 
 module -q purge
@@ -21,7 +20,7 @@ python3 -u train.py \
 	    -src_norm_multiplier ${DATA_DIR}/image_norm_l2norm_along_channel.pt \
 	    -tgt_path ${DATA_DIR}/hyperspectral_tgt_normalized.pt \
 	    -metadata ${DATA_DIR}/metadata.pt \
-            -hyper_data_header ${TAIGA_DIR}/20170615_reflectance_mosaic_128b.hdr \
+            -hyper_data_header ${DATA_DIR}/source/20170615_reflectance_mosaic_128b.hdr \
 	    -data_split_path ${DATA_DIR}/data-split \
 	    -save_dir test_model \
 	    -report_frequency 100 \
